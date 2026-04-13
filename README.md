@@ -17,17 +17,45 @@ Replace this paragraph with your own summary of what your version does.
 
 ## How The System Works
 
-Explain your design in plain language.
+The system works like a friend who knows your taste in music. You tell them what kind of songs you like, and they go through a catalog to find the ones that match your vibe as closely as possible.
 
-Some prompts to answer:
+### What each Song knows about itself
 
-- What features does each `Song` use in your system
-  - For example: genre, mood, energy, tempo
-- What information does your `UserProfile` store
-- How does your `Recommender` compute a score for each song
-- How do you choose which songs to recommend
+Every song in the catalog carries two types of information:
 
-You can include a simple diagram or bullet list if helpful.
+- *Audio feel*: energy (how intense or calm), valence (how happy or sad it sounds), danceability, tempo (speed in beats per minute), and acousticness (how organic vs. electronic it sounds)
+- *Labels*: genre (e.g., pop, lofi, rock), mood (e.g., happy, chill, intense), artist, and title
+
+### What the User Profile stores
+
+The user profile is a snapshot of your taste:
+
+- Your preferred level for each audio feature — for example, “I like high-energy, happy-sounding, very danceable songs”
+- Your preferred genres and moods (e.g., pop and lofi; happy and chill)
+- How much each feature matters to you (so genre can count more than tempo if you care more about style than speed)
+
+### How a song gets scored
+
+For each song, the system asks: *how close is this song to what the user wants?*
+
+1. For each audio feature (energy, valence, etc.), it measures how far the song's value is from the user's preference — closer = higher score for that feature
+2. It then adds bonus points if the genre matches, and a smaller bonus if the mood matches
+3. All the individual scores are combined into one final number using the importance weights the user set
+
+Genre counts more than mood by default, because genre tends to reflect a consistent style, while mood labels can be more subjective.
+
+### How the final recommendations are chosen
+
+1. Every song in the catalog gets a score
+2. Songs are sorted from highest to lowest score
+3. A diversity check runs: if two top songs are by the same artist, the second one is bumped down slightly so the list feels more varied
+4. The top 5 songs after that check become the recommendations
+
+### Simple flow
+
+```text
+User Profile → score each song → sort by score → diversity check → Top 5 recommendations
+```
 
 ---
 
