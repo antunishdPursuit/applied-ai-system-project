@@ -94,14 +94,15 @@ The opera fan test produced the most unexpected result. I expected the system to
 
 ## 8. Future Work  
 
-So some of the best ways that I can improve this product would be to have multiple profiles for one person so that way depending on the time of day and what you're doing they will get songs recommended for that moment instead of a just a general recommendation a second option would be to add more songs so that there can be more variety within the data set or maybe using API to get songs already created and then I don't have to host the data within this project 
+One of the best ways to improve this product would be to allow each user to create multiple profiles. That way, recommendations could change depending on the time of day, mood, or activity, instead of giving only one general set of song suggestions. Another improvement would be to expand the song library so users get more variety. This could be done either by adding more songs directly to the dataset or by using an API to pull from existing music catalogs, which would also reduce the need to host all of the data inside the project. In addition, letting users rate songs or skip recommendations would help the system learn over time. By tracking this feedback, the recommendation engine could adjust its weights and better understand which features matter most to each individual user.
 
 ## 9. Personal Reflection  
 
-A few sentences about your experience.  
 
-Prompts:  
+Working on this project helped me realize that both collaborative filtering and content-based filtering are intuitive in theory, but much more complex in practice. There are a lot of moving parts, and trying to build a system that accurately recommends songs for every user was honestly challenging. I ran into many variables that I didn’t initially account for, which made the system harder to fine-tune than expected.
 
-- What you learned about recommender systems  
-- Something unexpected or interesting you discovered  
-- How this changed the way you think about music recommendation apps  
+It also gave me a better appreciation for platforms like Spotify and Apple Music. They have access to massive amounts of user data, which allows them to continuously tweak and optimize their recommendation systems. That level of data makes a huge difference when trying to personalize results at scale.
+
+One of the most important things I noticed is how sensitive recommendation systems are to parameter changes. Even small adjustments to weights in the model could completely change the output. The code itself might stay the same, but shifting a few values can lead to very different recommendations. That made me realize how fragile these systems can be. It also explains why users sometimes feel like recommendations suddenly get worse—small backend adjustments can have noticeable effects.
+
+I’ve personally experienced this with features like Spotify’s DJ mode. Most of the time, it recommends songs I enjoy, but occasionally it suggests songs that don’t match my preferences at all. What’s interesting is that sometimes the “vibe” of the song feels right, but other aspects—like lyrics or style don’t.
