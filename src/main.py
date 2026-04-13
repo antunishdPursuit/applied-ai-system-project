@@ -1,100 +1,150 @@
 """
 Command line runner for the Music Recommender Simulation.
 
-This file helps you quickly run and test your recommender.
+Run with:  python -m src.main
 
-You will implement the functions in recommender.py:
-- load_songs
-- score_song
-- recommend_songs
+Defines six user profiles — three realistic and three adversarial/edge-case —
+and prints Top 5 recommendations for each.
 """
 
 from src.recommender import load_songs, recommend_songs
 
 
-def main() -> None:
-    songs = load_songs("data/songs.csv")
+# ---------------------------------------------------------------------------
+# PROFILES
+# ---------------------------------------------------------------------------
 
-    # -------------------------------------------------------------------------
-    # TASTE PROFILE — "Late-night study session" listener
-    #
-    # This person listens while studying: they want calm, organic-sounding music
-    # with a slow tempo and slightly positive (but not euphoric) feeling.
-    # They strongly prefer lofi and ambient over pop or rock.
-    # -------------------------------------------------------------------------
-    user_prefs = {
-        # Categorical preferences
-        "favorite_genre":      "lofi",
-        "favorite_mood":       "chill",
+# --- 1. Realistic: Late-night study session --------------------------------
+# Wants slow, organic, mildly positive lofi.  Strong acoustic preference.
+CHILL_LOFI = {
+    "name":                "Chill Lofi Student",
+    "favorite_genre":      "lofi",
+    "favorite_mood":       "chill",
+    "target_energy":       0.38,
+    "target_valence":      0.60,
+    "target_tempo":        76,
+    "target_danceability": 0.58,
+    "target_acousticness": 0.78,
+}
 
-        # Numeric targets — each mirrors a Song feature (0.0–1.0 unless noted)
-        "target_energy":       0.38,   # low intensity; not sleepy, not wired
-        "target_valence":      0.60,   # mildly positive, not euphoric
-        "target_tempo":        76,     # slow BPM; roughly a relaxed walking pace
-        "target_danceability": 0.58,   # gentle groove, not a dance floor track
-        "target_acousticness": 0.78,   # strong preference for organic/acoustic sound
+# --- 2. Realistic: Pre-workout pump-up -------------------------------------
+# High energy, fast tempo, very danceable pop.  Acoustic sound is unwanted.
+HIGH_ENERGY_POP = {
+    "name":                "High-Energy Pop Fan",
+    "favorite_genre":      "pop",
+    "favorite_mood":       "intense",
+    "target_energy":       0.92,
+    "target_valence":      0.80,
+    "target_tempo":        130,
+    "target_danceability": 0.90,
+    "target_acousticness": 0.05,
+}
 
-        # How much each feature counts in the final score (must sum to 1.0).
-        # Energy and acousticness are weighted highest because they most strongly
-        # define the "chill study" vibe; genre adds a categorical anchor.
-        "feature_weights": {
-            "energy":       0.25,
-            "acousticness": 0.20,
-            "tempo":        0.15,
-            "genre":        0.15,
-            "valence":      0.12,
-            "danceability": 0.08,
-            "mood":         0.05,
-        },
-    }
+# --- 3. Realistic: Late-night brooding rock --------------------------------
+# Wants loud, fast, dark-feeling rock.  Low valence (moody/angry tone).
+DEEP_ROCK = {
+    "name":                "Deep Intense Rock",
+    "favorite_genre":      "rock",
+    "favorite_mood":       "intense",
+    "target_energy":       0.90,
+    "target_valence":      0.35,
+    "target_tempo":        150,
+    "target_danceability": 0.60,
+    "target_acousticness": 0.10,
+}
 
-    # -------------------------------------------------------------------------
-    # PROFILE CRITIQUE
-    #
-    # Q: Can this profile tell "intense rock" apart from "chill lofi"?
-    #
-    # YES — clearly, on three independent axes:
-    #   • Energy gap:       target=0.38 vs rock(0.91)/lofi(0.40) → rock is ~0.53 away, lofi ~0.02
-    #   • Acousticness gap: target=0.78 vs rock(0.10)/lofi(0.71–0.86) → rock is ~0.68 away, lofi ~0.07
-    #   • Tempo gap:        target=76 BPM vs rock(152)/lofi(72–80) → rock is ~76 BPM away, lofi ~4 BPM
-    #
-    # Each axis alone would separate them; all three together make it decisive.
-    #
-    # WHERE THE PROFILE IS STILL NARROW:
-    #   1. Single genre/mood strings — a user who equally enjoys lofi AND ambient
-    #      gets no credit for ambient matches. Fix: use a list or weight dict.
-    #   2. Valence is a weak differentiator here — lofi(0.56–0.60) and
-    #      rock(0.48) are close enough that valence alone would not separate them.
-    #      It is useful for happy-pop vs sad-folk, but not for this pair.
-    #   3. No "dealbreaker" logic — metal (energy=0.97) still gets a non-zero
-    #      score. A hard genre-exclusion list would prevent bad recommendations
-    #      from ever surfacing.
-    #   4. All songs are scored, even ones in totally foreign genres. With only
-    #      18 songs this is fine; at Spotify scale you'd pre-filter first.
-    # -------------------------------------------------------------------------
+# --- 4. Adversarial: Contradictory energy vs mood -------------------------
+# "I want moody/sad vibes (low valence) but at extremely high energy."
+# Real examples: angry metal, intense workout music with dark lyrics.
+# Expected behavior: high-energy songs win even though their mood won't match.
+# Potential surprise: "Gym Hero" (pop/intense, energy=0.93) could rank high
+# despite having happy valence — the energy and tempo match overpowers the
+# valence mismatch.
+CONFLICTING_ENERGY_MOOD = {
+    "name":                "Conflicted (high energy + melancholic mood)",
+    "favorite_genre":      "metal",
+    "favorite_mood":       "angry",
+    "target_energy":       0.95,
+    "target_valence":      0.15,   # wants very sad/dark tone
+    "target_tempo":        160,
+    "target_danceability": 0.55,
+    "target_acousticness": 0.05,
+}
 
-    recommendations = recommend_songs(user_prefs, songs, k=5)
+# --- 5. Adversarial: Genre that doesn't exist in the catalog --------------
+# "classical/peaceful" is in the catalog, but "opera" is not.
+# Expected behavior: genre bonus never fires (+0.0 for every song), so the
+# system falls back entirely on numeric features.  The quietest, slowest,
+# most acoustic songs will win regardless of their genre label.
+MISSING_GENRE = {
+    "name":                "Opera Fan (genre not in catalog)",
+    "favorite_genre":      "opera",     # zero songs match this
+    "favorite_mood":       "peaceful",
+    "target_energy":       0.20,
+    "target_valence":      0.70,
+    "target_tempo":        65,
+    "target_danceability": 0.30,
+    "target_acousticness": 0.95,
+}
 
-    # ── Header ───────────────────────────────────────────────────────────────
+# --- 6. Adversarial: All targets at dead-center 0.5 ----------------------
+# Every numeric target is the midpoint of the 0–1 scale.
+# Expected behavior: every song gets nearly identical numeric scores;
+# the only differentiator becomes genre/mood match.  Exposes whether
+# categorical bonuses alone are enough to produce a meaningful ranking,
+# or whether everything collapses to near-ties.
+AVERAGE_USER = {
+    "name":                "The Average User (all targets at midpoint)",
+    "favorite_genre":      "jazz",
+    "favorite_mood":       "relaxed",
+    "target_energy":       0.50,
+    "target_valence":      0.50,
+    "target_tempo":        100,
+    "target_danceability": 0.50,
+    "target_acousticness": 0.50,
+}
+
+ALL_PROFILES = [
+    CHILL_LOFI,
+    HIGH_ENERGY_POP,
+    DEEP_ROCK,
+    CONFLICTING_ENERGY_MOOD,
+    MISSING_GENRE,
+    AVERAGE_USER,
+]
+
+
+# ---------------------------------------------------------------------------
+# OUTPUT HELPER
+# ---------------------------------------------------------------------------
+
+def print_recommendations(profile: dict, recommendations: list) -> None:
     print()
-    print("=" * 52)
-    print("  Music Recommender — Top 5 Picks")
-    print(f"  Profile: {user_prefs['favorite_genre'].upper()} / "
-          f"{user_prefs['favorite_mood']} / "
-          f"energy {user_prefs['target_energy']}")
-    print("=" * 52)
-
-    # ── Results ──────────────────────────────────────────────────────────────
+    print("=" * 56)
+    print(f"  {profile['name']}")
+    print(f"  Genre: {profile['favorite_genre']}  |  Mood: {profile['favorite_mood']}"
+          f"  |  Energy: {profile['target_energy']}")
+    print("=" * 56)
     for rank, (song, score, explanation) in enumerate(recommendations, start=1):
         print()
         print(f"  #{rank}  {song['title']}  —  {song['artist']}")
-        print(f"       Genre: {song['genre']}  |  Mood: {song['mood']}  "
-              f"|  Score: {score:.2f} / 9.00")
+        print(f"       Genre: {song['genre']}  |  Mood: {song['mood']}"
+              f"  |  Score: {score:.2f} / 9.00")
         for reason in explanation.split("; "):
             print(f"       • {reason}")
-
     print()
-    print("=" * 52)
+
+
+# ---------------------------------------------------------------------------
+# MAIN
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    songs = load_songs("data/songs.csv")
+
+    for profile in ALL_PROFILES:
+        recs = recommend_songs(profile, songs, k=5)
+        print_recommendations(profile, recs)
 
 
 if __name__ == "__main__":

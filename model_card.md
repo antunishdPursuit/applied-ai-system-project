@@ -61,29 +61,53 @@ Prompts:
 
 ## 6. Limitations and Bias 
 
-Where the system struggles or behaves unfairly. 
+Single targets can't represent users who enjoy variety
 
-Prompts:  
+The profile stores one number per feature. A user who loves both intense workout sessions and calm study sessions would set their energy target somewhere in the middle (say, 0.65) — which is actually the least characteristic value for them. The system then recommends mid-energy songs that don't fully satisfy either mood. Real recommenders handle this with multiple profiles, session context, or time-of-day signals. This one can't.
 
-- Features it does not consider  
-- Genres or moods that are underrepresented  
-- Cases where the system overfits to one preference  
-- Ways the scoring might unintentionally favor some users  
+#### Other
 
----
+1. Genre lock-in creates a 2-point ceiling for out-of-genre songs
+2. Missing-genre users get a structurally lower maximum score
+3. The energy gap is linear — it doesn't care about direction
+4. Acousticness creates a hard acoustic/electronic wall
+5. All features are scored independently and added together. System silently picks the least-bad options without flagging that the profile itself is contradictory.
 
 ## 7. Evaluation  
 
-How you checked whether the recommender behaved as expected. 
+Six profiles were tested — three realistic listeners and three adversarial edge cases designed to stress-test the scoring logic.
 
-Prompts:  
+### Profiles tested
 
-- Which user profiles you tested  
-- What you looked for in the recommendations  
-- What surprised you  
-- Any simple tests or comparisons you ran  
+| Profile | Genre | Mood | Energy |
+| --- | --- | --- | --- |
+| Chill Lofi Student | lofi | chill | 0.38 |
+| High-Energy Pop Fan | pop | intense | 0.92 |
+| Deep Intense Rock | rock | intense | 0.90 |
+| Conflicted (high energy + melancholic mood) | metal | angry | 0.95 |
+| Opera Fan (genre not in catalog) | opera | peaceful | 0.20 |
+| The Average User (all targets at 0.5) | jazz | relaxed | 0.50 |
 
-No need for numeric metrics unless you created some.
+### Profile comparisons
+
+**Chill Lofi vs. High-Energy Pop**
+These are the clearest opposites in the set. Lofi shifts the list toward slow, acoustic, low-energy tracks (Library Rain at 8.78); pop shifts it toward fast, electronic, high-energy tracks (Gym Hero at 8.92). Both #1 results scored near-maximum because genre, mood, and multiple numeric features all aligned at once. The swap in recommendations is total — not a single song appears in both top-5 lists — which confirms that energy and acousticness together are doing most of the separating work.
+
+**High-Energy Pop vs. Deep Intense Rock**
+Both want high energy (0.92 vs. 0.90) and intense mood, so they share some overlap in numeric scores. The critical difference is genre: Gym Hero (pop) tops the pop list; Storm Runner (rock) tops the rock list. Gym Hero still appears at #2 for the rock profile because its energy and acousticness are nearly identical to rock songs — genre is the only thing holding it back. This reveals that high-energy genres cluster together, and the genre bonus is the main thing keeping their top-5 lists distinct.
+
+**Conflicted (high energy + melancholic) vs. Deep Intense Rock**
+Both want high energy, but the conflicted profile targets very low valence (0.15 — dark, sad-sounding) while the rock profile is more neutral (0.35). Ember and Ash (metal) wins the conflicted list because it's the only song combining high energy AND low valence. Interestingly, Gym Hero — a pop/intense song with very happy valence — still appears at #4 for the conflicted profile because energy and acousticness points outweigh the valence penalty. The system is not easily tricked: energy dominates, and the dark-mood preference only reshapes the lower rankings.
+
+**Opera Fan vs. Chill Lofi Student**
+Both want low energy and high acousticness, but the opera profile's genre ("opera") doesn't exist in the catalog, so the genre bonus never fires. Despite this, Moonlit Serenade (classical/peaceful) rises to #1 — not because of genre, but because its mood matches and its audio features (energy=0.18, acousticness=0.98) almost perfectly match the targets. The lofi student's list is anchored by two genre-match songs scoring 8.74–8.78; the opera fan's entire list scores 5.21–6.84. The gap shows exactly how much the missing genre bonus costs: roughly 2 points on the best result.
+
+**Average User vs. all others**
+This was the most revealing test. Setting every numeric target to 0.5 compressed the score range dramatically — #1 scored 7.83 but #2 dropped to 5.61, and the bottom three were separated by less than 0.5 points. With no strong numeric pull in any direction, the genre and mood bonuses became the entire ranking mechanism. Coffee Shop Stories (jazz/relaxed) won purely because it matched both categories. Any song without a genre or mood match was essentially shuffled at random. This exposes the system's core weakness: it needs at least one strong numeric preference to produce a meaningful ordering.
+
+### What surprised me
+
+The opera fan test produced the most unexpected result. I expected the system to fail badly without a genre match — returning irrelevant songs. Instead, it quietly fell back on numeric features and surfaced Moonlit Serenade, which genuinely sounds like what an opera fan might also enjoy: quiet, acoustic, and peaceful. The system found a reasonable answer through a completely different path than intended. That was not obvious from reading the code.
 
 ---
 
