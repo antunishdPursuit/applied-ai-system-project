@@ -2,9 +2,7 @@
 
 ## 1. Model Name  
 
-Give your model a short, descriptive name.  
-Example: **VibeFinder 1.0**  
-
+What You Are(WYA)
 ---
 
 ## 2. Intended Use  
@@ -18,46 +16,29 @@ Prompts:
 - Is this for real users or classroom exploration  
 
 ---
-
+So this app is intended to help people look for songs that would relate or encompass what they'd like in music we have a variety of songs here and depending on what their profile is like we will recommend the most compatible songs for you 
 ## 3. How the Model Works  
 
-Explain your scoring approach in simple language.  
-
-Prompts:  
-
-- What features of each song are used (genre, energy, mood, etc.)  
-- What user preferences are considered  
-- How does the model turn those into a score  
-- What changes did you make from the starter logic  
-
-Avoid code here. Pretend you are explaining the idea to a friend who does not program.
-
----
+Every song in the catalog gets a score out of 9 points based on how well it matches what the user told us they like. The system looks at seven things about each song: its genre, its mood, how energetic it sounds, how acoustic or electronic it feels, how happy or sad the tone is, its tempo in beats per minute, and how danceable it is. For each of those, it checks how close the song is to the user's preferred value. 
+Genre and mood work differently: they're worth fixed bonus points (2 points for a genre match, 1 for mood) because those labels reflect a whole style and not just a number. Once all seven scores are added up, every song in the catalog has a total, they're sorted highest to lowest, and a diversity check removes duplicate artists before the top 5 are returned. Each feature has a different weight based on how much it actually matters to the listening experience and builds a plain-English explanation for every recommendation so you can see exactly why each song was chosen.
 
 ## 4. Data  
 
-Describe the dataset the model uses.  
+The catalog contains 18 songs stored in `data/songs.csv`.
 
-Prompts:  
+**Genres represented:** pop, lofi, rock, ambient, jazz, synthwave, indie pop, r&b, electronic, folk, hip-hop, metal, classical, latin, soul
 
-- How many songs are in the catalog  
-- What genres or moods are represented  
-- Did you add or remove data  
-- Are there parts of musical taste missing in the dataset  
+**Moods represented:** happy, chill, intense, relaxed, moody, focused, romantic, energetic, melancholic, confident, angry, peaceful, uplifting, nostalgic
+
+**What was added:** The 8 new songs were chosen to fill gaps. Each new song also introduced a mood not previously present.
+
+**What is still missing:** The catalog reflects a narrow slice of global music taste. There is no K-pop, reggae, country, blues, or any non-Western genre. All songs are in English (implied). Moods like "bittersweet," "tense," or "dreamy" are absent. The data was also created synthetically so the numeric values were not measured from actual audio, so they may not reflect how these songs truly sound. 
 
 ---
 
 ## 5. Strengths  
 
-Where does your system seem to work well  
-
-Prompts:  
-
-- User types for which it gives reasonable results  
-- Any patterns you think your scoring captures correctly  
-- Cases where the recommendations matched your intuition  
-
----
+The system works best for listeners with a clear, consistent taste. For these users, multiple features point in the same direction at once, so the top results score very high and feel obviously right. The scoring also does a good job separating genres that are acoustically very different: lofi and metal will almost never share a top-5 list because their energy, acousticness, and tempo values are worlds apart. The genre and mood bonuses add a useful anchor so that similar songs rise above technically close but tonally wrong ones. Finally, the plain-English explanation attached to every recommendation makes the system transparent: you can always see exactly why a song was chosen, which is something most real recommenders don't offer.
 
 ## 6. Limitations and Bias 
 
@@ -75,7 +56,7 @@ The profile stores one number per feature. A user who loves both intense workout
 
 ## 7. Evaluation  
 
-Six profiles were tested — three realistic listeners and three adversarial edge cases designed to stress-test the scoring logic.
+Six profiles were tested which were three realistic listeners and three adversarial edge cases designed to stress-test the scoring logic.
 
 ### Profiles tested
 
@@ -90,39 +71,30 @@ Six profiles were tested — three realistic listeners and three adversarial edg
 
 ### Profile comparisons
 
-**Chill Lofi vs. High-Energy Pop**
-These are the clearest opposites in the set. Lofi shifts the list toward slow, acoustic, low-energy tracks (Library Rain at 8.78); pop shifts it toward fast, electronic, high-energy tracks (Gym Hero at 8.92). Both #1 results scored near-maximum because genre, mood, and multiple numeric features all aligned at once. The swap in recommendations is total — not a single song appears in both top-5 lists — which confirms that energy and acousticness together are doing most of the separating work.
+**Chill Lofi Student vs. High-Energy Pop**
+These are the clearest opposites in the set. Lofi shifts the list toward slow, acoustic, low-energy tracks while  pop shifts it toward fast, electronic, high-energy tracks.
 
 **High-Energy Pop vs. Deep Intense Rock**
-Both want high energy (0.92 vs. 0.90) and intense mood, so they share some overlap in numeric scores. The critical difference is genre: Gym Hero (pop) tops the pop list; Storm Runner (rock) tops the rock list. Gym Hero still appears at #2 for the rock profile because its energy and acousticness are nearly identical to rock songs — genre is the only thing holding it back. This reveals that high-energy genres cluster together, and the genre bonus is the main thing keeping their top-5 lists distinct.
+Both want high energy (0.92 vs. 0.90) and intense mood, so they share some overlap in numeric scores. The critical difference is genre: Gym Hero (pop) tops the pop list; Storm Runner (rock) tops the rock list. 
 
 **Conflicted (high energy + melancholic) vs. Deep Intense Rock**
-Both want high energy, but the conflicted profile targets very low valence (0.15 — dark, sad-sounding) while the rock profile is more neutral (0.35). Ember and Ash (metal) wins the conflicted list because it's the only song combining high energy AND low valence. Interestingly, Gym Hero — a pop/intense song with very happy valence — still appears at #4 for the conflicted profile because energy and acousticness points outweigh the valence penalty. The system is not easily tricked: energy dominates, and the dark-mood preference only reshapes the lower rankings.
+Both want high energy, but the conflicted profile targets very low valence (0.15 — dark, sad-sounding) while the rock profile is more neutral (0.35). Ember and Ash (metal) wins the conflicted list because it's the only song combining high energy AND low valence.
 
 **Opera Fan vs. Chill Lofi Student**
-Both want low energy and high acousticness, but the opera profile's genre ("opera") doesn't exist in the catalog, so the genre bonus never fires. Despite this, Moonlit Serenade (classical/peaceful) rises to #1 — not because of genre, but because its mood matches and its audio features (energy=0.18, acousticness=0.98) almost perfectly match the targets. The lofi student's list is anchored by two genre-match songs scoring 8.74–8.78; the opera fan's entire list scores 5.21–6.84. The gap shows exactly how much the missing genre bonus costs: roughly 2 points on the best result.
+Both want low energy and high acousticness, but the opera profile's genre ("opera") doesn't exist in the catalog, so the genre bonus never fires. Despite this, Moonlit Serenade (classical/peaceful) rises to #1 — not because of genre, but because its mood matches and its audio features almost perfectly match the targets. 
 
 **Average User vs. all others**
-This was the most revealing test. Setting every numeric target to 0.5 compressed the score range dramatically — #1 scored 7.83 but #2 dropped to 5.61, and the bottom three were separated by less than 0.5 points. With no strong numeric pull in any direction, the genre and mood bonuses became the entire ranking mechanism. Coffee Shop Stories (jazz/relaxed) won purely because it matched both categories. Any song without a genre or mood match was essentially shuffled at random. This exposes the system's core weakness: it needs at least one strong numeric preference to produce a meaningful ordering.
+Setting every numeric target to 0.5 compressed the score range dramatically. With no strong numeric pull in any direction, the genre and mood bonuses became the entire ranking mechanism. Coffee Shop Stories (jazz/relaxed) won purely because it matched both categories. Any song without a genre or mood match was essentially shuffled at random. This exposes the system's core weakness: it needs at least one strong numeric preference to produce a meaningful ordering.
 
 ### What surprised me
 
-The opera fan test produced the most unexpected result. I expected the system to fail badly without a genre match — returning irrelevant songs. Instead, it quietly fell back on numeric features and surfaced Moonlit Serenade, which genuinely sounds like what an opera fan might also enjoy: quiet, acoustic, and peaceful. The system found a reasonable answer through a completely different path than intended. That was not obvious from reading the code.
+The opera fan test produced the most unexpected result. I expected the system to fail badly without a genre match. Instead, it quietly fell back on numeric features and surfaced Moonlit Serenade, which genuinely sounds like what an opera fan might also enjoy. That was not obvious from reading the code.
 
 ---
 
 ## 8. Future Work  
 
-Ideas for how you would improve the model next.  
-
-Prompts:  
-
-- Additional features or preferences  
-- Better ways to explain recommendations  
-- Improving diversity among the top results  
-- Handling more complex user tastes  
-
----
+So some of the best ways that I can improve this product would be to have multiple profiles for one person so that way depending on the time of day and what you're doing they will get songs recommended for that moment instead of a just a general recommendation a second option would be to add more songs so that there can be more variety within the data set or maybe using API to get songs already created and then I don't have to host the data within this project 
 
 ## 9. Personal Reflection  
 
