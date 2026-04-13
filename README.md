@@ -110,6 +110,10 @@ flowchart TD
 
 ---
 
+### Sample Terminal Output
+
+![alt text](image.png)
+
 ## Getting Started
 
 ### Setup
