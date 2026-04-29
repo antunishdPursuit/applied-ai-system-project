@@ -12,10 +12,14 @@ export default function AvatarScene() {
   const canvasRef  = useRef(null)
   const vrmRef     = useRef(null)
   const mixerRef   = useRef(null)
-  const waveRef    = useRef(createWaveState())
-  const triggerRef = useRef(null)
-  const speakRef   = useRef(null)
-  const inputRef   = useRef(null)
+  const waveRef         = useRef(createWaveState())
+  const triggerRef      = useRef(null)
+  const speakRef        = useRef(null)
+  const inputRef        = useRef(null)
+  const startLipSyncRef = useRef(null)
+  const stopLipSyncRef  = useRef(null)
+  const analyserRef     = useRef(null)
+  const analyserDataRef = useRef(null)
   const [messages,      setMessages]      = useState([])
   const [loading,       setLoading]       = useState(false)
   const [pickedSongs,   setPickedSongs]   = useState([])
@@ -107,6 +111,8 @@ export default function AvatarScene() {
 
     // Lip sync state
     const lipSync = createLipSyncState()
+    startLipSyncRef.current = ()       => startSpeaking(lipSync)
+    stopLipSyncRef.current  = ()       => stopSpeaking(lipSync, vrmRef.current)
 
     // TTS — exposed to speak button
     speakRef.current = (text) => {
@@ -178,7 +184,16 @@ export default function AvatarScene() {
         mixerRef.current?.update(delta)
         updateIdle(vrm, elapsed)
         updateBlink(vrm, blinkState, delta)
-        updateLipSync(vrm, lipSync, delta)
+        if (analyserRef.current && analyserDataRef.current) {
+          analyserRef.current.getByteFrequencyData(analyserDataRef.current)
+          const avg   = analyserDataRef.current.reduce((a, b) => a + b, 0) / analyserDataRef.current.length
+          const value = Math.min((avg / 80) * 0.9, 0.9)
+          vrm.expressionManager?.setValue('aa', value)
+          const jaw = vrm.humanoid?.getNormalizedBoneNode('jaw')
+          if (jaw) jaw.rotation.x = value * 0.3
+        } else {
+          updateLipSync(vrm, lipSync, delta)
+        }
         updateWave(vrm, waveRef, delta)
         vrm.update(delta)
       }
@@ -215,11 +230,28 @@ export default function AvatarScene() {
           body:    JSON.stringify({ text }),
         })
         if (!res.ok) throw new Error('ElevenLabs unavailable')
-        const blob = await res.blob()
-        const url  = URL.createObjectURL(blob)
-        const audio = new Audio(url)
-        audio.onended = () => URL.revokeObjectURL(url)
-        audio.play()
+        const blob     = await res.blob()
+        const url      = URL.createObjectURL(blob)
+        const audio    = new Audio(url)
+        const audioCtx = new AudioContext()
+        const analyser = audioCtx.createAnalyser()
+        analyser.fftSize = 256
+        const source   = audioCtx.createMediaElementSource(audio)
+        source.connect(analyser)
+        analyser.connect(audioCtx.destination)
+        analyserRef.current     = analyser
+        analyserDataRef.current = new Uint8Array(analyser.frequencyBinCount)
+
+        const cleanup = () => {
+          analyserRef.current     = null
+          analyserDataRef.current = null
+          audioCtx.close()
+          URL.revokeObjectURL(url)
+          stopLipSyncRef.current?.()
+        }
+        audio.onended = cleanup
+        audio.onerror = cleanup
+        await audio.play()
         return
       } catch {
         // fall through to browser TTS
