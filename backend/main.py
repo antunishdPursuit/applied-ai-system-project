@@ -10,8 +10,53 @@ from typing import List, Optional
 import anthropic
 import httpx
 from dotenv import load_dotenv
+from src.recommender import load_songs, recommend_songs
+from src.main import CHILL_LOFI, HIGH_ENERGY_POP, DEEP_ROCK, CONFLICTING_ENERGY_MOOD, AVERAGE_USER
 
 load_dotenv()
+
+# ---------------------------------------------------------------------------
+# Fallback recommender — used when ANTHROPIC_API_KEY or LASTFM_API_KEY is missing
+# ---------------------------------------------------------------------------
+
+_SONGS = load_songs(os.path.join(os.path.dirname(__file__), '..', 'data', 'songs.csv'))
+
+_KEYWORD_PROFILES = [
+    ({"lofi", "chill", "study", "focus", "calm", "relax", "soft", "lo-fi"},         CHILL_LOFI),
+    ({"pop", "dance", "energy", "energetic", "workout", "gym", "upbeat", "happy"},  HIGH_ENERGY_POP),
+    ({"rock", "metal", "intense", "heavy", "dark", "angry", "loud", "hard"},        DEEP_ROCK),
+    ({"sad", "moody", "melancholy", "emotional", "heartbreak", "depressed"},        CONFLICTING_ENERGY_MOOD),
+]
+
+_FALLBACK_INTROS = {
+    "Chill Lofi Student":                        "I can feel those chill study vibes! Here are some mellow tracks I think you'll love.",
+    "High-Energy Pop Fan":                       "You want to move! Here are some high-energy tracks to keep the momentum going.",
+    "Deep Intense Rock":                         "Time to turn it up! Here are some intense tracks that should hit the spot.",
+    "Conflicted (high energy + melancholic mood)":"Here are some tracks with that raw, emotional intensity you're after.",
+}
+
+def _fallback_recommend(message: str) -> dict:
+    words = set(message.lower().split())
+    profile = AVERAGE_USER
+    for keywords, candidate in _KEYWORD_PROFILES:
+        if words & keywords:
+            profile = candidate
+            break
+
+    results = recommend_songs(profile, _SONGS, k=5)
+    intro   = _FALLBACK_INTROS.get(profile["name"], "Here are some tracks I think you'll enjoy!")
+    titles  = " and ".join(f'"{s["title"]}"' for s, _, _ in results[:2])
+    response_text = f"{intro} I'd start with {titles}."
+
+    recommendations = [
+        {"title": song["title"], "artist": song["artist"], "url": ""}
+        for song, _, _ in results
+    ]
+    return {"response": response_text, "recommendations": recommendations}
+
+
+def _is_fallback_mode() -> bool:
+    return not os.getenv("ANTHROPIC_API_KEY") or not os.getenv("LASTFM_API_KEY")
 
 app = FastAPI()
 
@@ -101,8 +146,9 @@ async def chat(request: ChatRequest):
     Pass 2: After fetching tracks from Last.fm, send the tool result back so
             Claude can form a natural spoken response that names specific songs.
     """
-    if not os.getenv("ANTHROPIC_API_KEY"):
-        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY not set")
+    if _is_fallback_mode():
+        last_msg = request.messages[-1].content if request.messages else ""
+        return _fallback_recommend(last_msg)
 
     history = [{"role": m.role, "content": m.content} for m in request.messages]
 
