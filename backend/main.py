@@ -3,6 +3,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
@@ -158,6 +159,56 @@ async def chat(request: ChatRequest):
 
     text = next((b.text for b in response.content if hasattr(b, "text")), "")
     return {"response": text, "recommendations": recommendations}
+
+
+class TTSRequest(BaseModel):
+    text: str
+
+
+@app.get("/tts/available")
+def tts_available():
+    return {"elevenlabs": bool(os.getenv("ELEVENLABS_API_KEY"))}
+
+
+@app.post("/tts")
+async def tts(req: TTSRequest):
+    api_key  = os.getenv("ELEVENLABS_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=501, detail="ELEVENLABS_API_KEY not configured")
+
+    voice_id = os.getenv("ELEVENLABS_VOICE_ID", "")
+
+    async with httpx.AsyncClient(timeout=30.0) as http:
+        if not voice_id:
+            voices_resp = await http.get(
+                "https://api.elevenlabs.io/v1/voices",
+                headers={"xi-api-key": api_key},
+            )
+            print(f"Voices fetch status: {voices_resp.status_code}")
+            print(f"Voices response: {voices_resp.text[:500]}")
+            voices = voices_resp.json().get("voices", [])
+            if not voices:
+                raise HTTPException(status_code=502, detail="No voices found in ElevenLabs account")
+            voice_id = voices[0]["voice_id"]
+            print(f"Using ElevenLabs voice: {voices[0]['name']} ({voice_id})")
+
+        print(f"Calling TTS with voice_id={voice_id}")
+        resp = await http.post(
+            f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
+            headers={"xi-api-key": api_key, "Content-Type": "application/json"},
+            json={
+                "text": req.text,
+                "model_id": "eleven_turbo_v2",
+                "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
+            },
+        )
+
+    print(f"TTS response status: {resp.status_code}")
+    if resp.status_code != 200:
+        print(f"ElevenLabs error body: {resp.text}")
+        raise HTTPException(status_code=502, detail=f"ElevenLabs error {resp.status_code}: {resp.text}")
+
+    return Response(content=resp.content, media_type="audio/mpeg")
 
 
 class RecommendRequest(BaseModel):
