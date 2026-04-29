@@ -2,18 +2,18 @@
 
 ## Sample Terminal Output
 
-![Terminal output](image.png)
+![Terminal output](../assets/image.png)
 
 ---
 
 ## Profile Results
 
-![Profile 1](image-1.png)
-![Profile 2](image-2.png)
-![Profile 3](image-3.png)
-![Profile 4](image-4.png)
-![Profile 5](image-5.png)
-![Profile 6](image-6.png)
+![Profile 1](../assets/image-1.png)
+![Profile 2](../assets/image-2.png)
+![Profile 3](../assets/image-3.png)
+![Profile 4](../assets/image-4.png)
+![Profile 5](../assets/image-5.png)
+![Profile 6](../assets/image-6.png)
 
 ---
 

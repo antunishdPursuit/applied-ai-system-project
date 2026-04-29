@@ -7,32 +7,32 @@ flowchart TD
     User([👤 User])
 
     subgraph FRONTEND ["Frontend — React + Three.js (port 5173)"]
-        ChatUI[Chat UI\nmessage bubbles + song cards]
-        LikedPanel[Liked Songs Panel\npick ♡ / remove ♥]
-        Avatar[Esme Avatar\n3D VRM + lip sync]
-        TTS[TTS Engine\nElevenLabs or Browser]
+        ChatUI[Chat UI<br/>message bubbles + song cards]
+        LikedPanel[Liked Songs Panel<br/>pick ♡ / remove ♥]
+        Avatar[Esme Avatar<br/>3D VRM + lip sync]
+        TTS[TTS Engine<br/>ElevenLabs or Browser]
     end
 
     subgraph BACKEND ["Backend — FastAPI (port 8001)"]
-        FallbackCheck{API keys\nset?}
-        ChatRoute[/chat]
-        TTSRoute[/tts]
+        FallbackCheck{API keys<br/>set?}
+        ChatRoute["POST /chat"]
+        TTSRoute["POST /tts"]
     end
 
     subgraph AI_LAYER ["AI Layer"]
-        Claude[Claude Haiku\nextracts genre + mood\nforms spoken reply]
-        LastFM[Last.fm API\nfetches top tracks by tag]
+        Claude[Claude Haiku<br/>extracts genre + mood<br/>forms spoken reply]
+        LastFM[Last.fm API<br/>fetches top tracks by tag]
     end
 
     subgraph FALLBACK ["Fallback Layer — no keys required"]
-        KeywordMatch[Keyword Matcher\nlofi · pop · rock · sad ...]
-        PythonRec[Python Recommender\nscores 18 songs from songs.csv]
+        KeywordMatch[Keyword Matcher<br/>lofi · pop · rock · sad ...]
+        PythonRec[Python Recommender<br/>scores 18 songs from songs.csv]
     end
 
     subgraph TESTING ["Testing & Human Evaluation"]
-        Pytest[pytest\ntest_recommender.py]
-        Profiles[6 Hardcoded Profiles\n3 realistic · 3 adversarial]
-        HumanReview[👤 Human Review\ndo results match expectations?]
+        Pytest[pytest<br/>test_recommender.py]
+        Profiles[6 Hardcoded Profiles<br/>3 realistic · 3 adversarial]
+        HumanReview[👤 Human Review<br/>do results match expectations?]
     end
 
     %% Normal chat flow
