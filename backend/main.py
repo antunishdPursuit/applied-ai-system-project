@@ -1,0 +1,187 @@
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List, Optional
+import anthropic
+import httpx
+from dotenv import load_dotenv
+
+load_dotenv()
+
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://localhost:5174"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+client      = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+LASTFM_BASE = "http://ws.audioscrobbler.com/2.0/"
+
+SYSTEM_PROMPT = (
+    "You are Esme, a warm and friendly music assistant. "
+    "IMPORTANT: Whenever the user mentions music, songs, artists, genres, moods, or asks what to listen to, "
+    "you MUST call the get_recommendations tool — never answer music questions from your own knowledge. "
+    "After getting results, respond in 2 sentences max since your words are spoken aloud. "
+    "Mention 1 or 2 song titles by name to make it feel personal."
+)
+
+TOOLS = [
+    {
+        "name": "get_recommendations",
+        "description": (
+            "Fetch real song recommendations from Last.fm by genre and mood. "
+            "Use this whenever the user asks for music suggestions."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "genre": {
+                    "type": "string",
+                    "description": "Music genre, e.g. lofi, pop, rock, jazz, hip-hop, classical, electronic",
+                },
+                "mood": {
+                    "type": "string",
+                    "description": "Optional mood or vibe, e.g. chill, happy, energetic, sad, focused",
+                },
+            },
+            "required": ["genre"],
+        },
+    }
+]
+
+# Keywords that signal a music-related request. When matched, tool_choice is
+# forced to "any" so Claude cannot answer from training knowledge instead of
+# calling get_recommendations.
+MUSIC_KEYWORDS = {
+    "music", "song", "songs", "track", "tracks", "artist", "listen", "recommend",
+    "recommendation", "playlist", "genre", "lofi", "pop", "rock", "jazz", "hip-hop",
+    "electronic", "classical", "chill", "energetic", "sad", "happy", "vibe", "beats",
+    "albums", "album", "rapper", "band", "singer", "tune", "tunes",
+}
+
+
+async def fetch_tracks(tag: str, limit: int = 5) -> list:
+    """Call Last.fm tag.gettoptracks and return the track list."""
+    api_key = os.getenv("LASTFM_API_KEY")
+    async with httpx.AsyncClient() as http:
+        resp = await http.get(LASTFM_BASE, params={
+            "method":  "tag.gettoptracks",
+            "tag":     tag.lower(),
+            "api_key": api_key,
+            "format":  "json",
+            "limit":   limit,
+        })
+    return resp.json().get("tracks", {}).get("track", [])
+
+
+class Message(BaseModel):
+    role: str
+    content: str
+
+
+class ChatRequest(BaseModel):
+    messages: List[Message]
+
+
+@app.post("/chat")
+async def chat(request: ChatRequest):
+    """
+    Two-pass Claude conversation with tool use.
+
+    Pass 1: Send the conversation history. If the message contains music keywords,
+            force tool_choice="any" so Claude must call get_recommendations.
+    Pass 2: After fetching tracks from Last.fm, send the tool result back so
+            Claude can form a natural spoken response that names specific songs.
+    """
+    if not os.getenv("ANTHROPIC_API_KEY"):
+        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY not set")
+
+    history = [{"role": m.role, "content": m.content} for m in request.messages]
+
+    last_msg = request.messages[-1].content.lower() if request.messages else ""
+    is_music = any(kw in last_msg for kw in MUSIC_KEYWORDS)
+    tool_choice = {"type": "any"} if is_music else {"type": "auto"}
+
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=512,
+        system=SYSTEM_PROMPT,
+        tools=TOOLS,
+        tool_choice=tool_choice,
+        messages=history,
+    )
+
+    recommendations = None
+
+    if response.stop_reason == "tool_use":
+        tool_block = next(b for b in response.content if b.type == "tool_use")
+        genre = tool_block.input.get("genre", "pop")
+        mood  = tool_block.input.get("mood")
+
+        tracks = await fetch_tracks(genre)
+        # Fall back to mood tag if the genre tag returns nothing on Last.fm.
+        if not tracks and mood:
+            tracks = await fetch_tracks(mood)
+
+        recommendations = [
+            {"title": t["name"], "artist": t["artist"]["name"], "url": t.get("url", "")}
+            for t in tracks
+        ]
+
+        tracks_text = "\n".join(
+            f"- {t['title']} by {t['artist']}" for t in recommendations
+        )
+
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=256,
+            system=SYSTEM_PROMPT,
+            tools=TOOLS,
+            messages=history + [
+                {"role": "assistant", "content": response.content},
+                {"role": "user", "content": [
+                    {
+                        "type":        "tool_result",
+                        "tool_use_id": tool_block.id,
+                        "content":     tracks_text,
+                    }
+                ]},
+            ],
+        )
+
+    text = next((b.text for b in response.content if hasattr(b, "text")), "")
+    return {"response": text, "recommendations": recommendations}
+
+
+class RecommendRequest(BaseModel):
+    genre: str
+    mood:  Optional[str] = None
+    limit: Optional[int] = 5
+
+
+@app.post("/recommend")
+async def recommend(req: RecommendRequest):
+    """Direct Last.fm lookup — no Claude involved. Used for testing the data layer."""
+    if not os.getenv("LASTFM_API_KEY"):
+        raise HTTPException(status_code=500, detail="LASTFM_API_KEY not set")
+
+    tracks = await fetch_tracks(req.genre, req.limit)
+    if not tracks and req.mood:
+        tracks = await fetch_tracks(req.mood, req.limit)
+    if not tracks:
+        raise HTTPException(status_code=404, detail=f"No tracks found for '{req.genre}'")
+
+    return {
+        "tag": req.genre,
+        "recommendations": [
+            {"title": t["name"], "artist": t["artist"]["name"], "url": t.get("url", "")}
+            for t in tracks
+        ],
+    }
