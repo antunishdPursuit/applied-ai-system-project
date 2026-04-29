@@ -21,12 +21,28 @@ export default function AvatarScene() {
   const [pickedSongs,   setPickedSongs]   = useState([])
   const [loaderVisible, setLoaderVisible] = useState(true)
   const [loaderFading,  setLoaderFading]  = useState(false)
-  const [profileBuilt,  setProfileBuilt]  = useState(false)
-  const messagesRef = useRef([])
+  const [profileBuilt,       setProfileBuilt]       = useState(false)
+  const [voiceEnabled,       setVoiceEnabled]       = useState(true)
+  const [useElevenLabs,      setUseElevenLabs]      = useState(false)
+  const [elevenLabsAvailable, setElevenLabsAvailable] = useState(false)
+  const messagesRef      = useRef([])
+  const voiceEnabledRef  = useRef(true)
+  const useElevenlabsRef = useRef(true)
+
+  useEffect(() => { messagesRef.current      = messages      }, [messages])
+  useEffect(() => { voiceEnabledRef.current  = voiceEnabled  }, [voiceEnabled])
+  useEffect(() => { useElevenlabsRef.current = useElevenLabs }, [useElevenLabs])
 
   useEffect(() => {
-    messagesRef.current = messages
-  }, [messages])
+    fetch('http://localhost:8001/tts/available')
+      .then(r => r.json())
+      .then(data => {
+        setElevenLabsAvailable(data.elevenlabs)
+        setUseElevenLabs(data.elevenlabs)
+        useElevenlabsRef.current = data.elevenlabs
+      })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (pickedSongs.length === 5 && !profileBuilt) {
@@ -188,6 +204,31 @@ export default function AvatarScene() {
     }
   }, [])
 
+  async function speak(text) {
+    if (!voiceEnabledRef.current || !text.trim()) return
+
+    if (useElevenlabsRef.current) {
+      try {
+        const res = await fetch('http://localhost:8001/tts', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ text }),
+        })
+        if (!res.ok) throw new Error('ElevenLabs unavailable')
+        const blob = await res.blob()
+        const url  = URL.createObjectURL(blob)
+        const audio = new Audio(url)
+        audio.onended = () => URL.revokeObjectURL(url)
+        audio.play()
+        return
+      } catch {
+        // fall through to browser TTS
+      }
+    }
+
+    speakRef.current?.(text)
+  }
+
   async function sendMessage(text) {
     const userMsg = { role: 'user', content: text }
     const history = [...messagesRef.current, userMsg]
@@ -208,7 +249,7 @@ export default function AvatarScene() {
         content: reply,
         songs:   data.recommendations ?? null,
       }])
-      speakRef.current?.(reply)
+      speak(reply)
     } catch (err) {
       console.error('Chat error:', err)
     } finally {
@@ -459,6 +500,26 @@ export default function AvatarScene() {
       }}>
         <button onClick={() => triggerRef.current?.()} style={btnStyle('#475569')}>
           Wave Hi 👋
+        </button>
+
+        <button
+          onClick={() => setVoiceEnabled(v => !v)}
+          title={voiceEnabled ? 'Disable voice' : 'Enable voice'}
+          style={btnStyle(voiceEnabled ? '#475569' : '#1e1e2e')}
+        >
+          {voiceEnabled ? '🔊 Voice On' : '🔇 Voice Off'}
+        </button>
+
+        <button
+          onClick={() => elevenLabsAvailable && setUseElevenLabs(v => !v)}
+          title={!elevenLabsAvailable ? 'Add ELEVENLABS_API_KEY to backend/.env to enable' : useElevenLabs ? 'Switch to browser voice' : 'Switch to ElevenLabs voice'}
+          style={{
+            ...btnStyle(useElevenLabs && elevenLabsAvailable ? '#6d28d9' : '#374151'),
+            opacity: elevenLabsAvailable ? 1 : 0.4,
+            cursor:  elevenLabsAvailable ? 'pointer' : 'not-allowed',
+          }}
+        >
+          {useElevenLabs && elevenLabsAvailable ? '✨ ElevenLabs' : '💬 Browser'}
         </button>
 
         <input
