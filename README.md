@@ -49,6 +49,9 @@ The system has three layers that work together:
 
 > See the full [system diagram](docs/system-diagram.md) and [how it works](docs/how-it-works.md) for more detail.
 
+**Mermaid Screenshot**
+
+![alt text](assets/mermaid.png)
 ---
 
 ## Setup Instructions
@@ -122,7 +125,7 @@ pytest
 
 **Esme:** Perfect vibe for you! I'd suggest starting with "Will He" by Joji or "Kids" by Current Joys—both are totally chill and perfect for unwinding right now. 🎵
 
-![alt text](docs/esme-1.png)
+![alt text](assets/esme-1.png)
 
 
 ---
@@ -134,7 +137,8 @@ pytest
 **Esme:** Perfect for the gym—I've got some bangers that'll get your adrenaline pumping! "Flashing Lights" and "Touch the Sky" are absolute workout fuel that'll keep your energy sky-high.
 
 
-![alt text](docs/esme-2.png)
+![alt text](assets/esme-2.png)
+
 ---
 
 ### 3 — 5-pick profile trigger
@@ -143,7 +147,8 @@ pytest
 
 **Esme (auto-triggered):** I've been paying attention. You've got killer taste—you dig soulful hip-hop with infectious production! Try "Otis" by Jay-Z ft. Kanye West and "Redbone" by Childish Gambino for that same smooth, energetic vibe.
 
-![alt text](docs/esme-3.png)
+![alt text](assets/esme-3.png)
+
 ---
 
 ### 4 — Fallback mode (no API keys)
@@ -153,7 +158,7 @@ pytest
 **Esme:** Here are some tracks I think you'll enjoy! I'd start with "Coffee Shop Stories" and "Slow Burn Summer".
 
 > Song cards appear: top 5 from the local songs.csv catalog, scored by the Python recommender
-![alt text](docs/esme-4.png)
+![alt text](assets/esme-4.png)
 ---
 
 ## Design Decisions
