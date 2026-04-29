@@ -16,9 +16,32 @@ export default function AvatarScene() {
   const triggerRef = useRef(null)
   const speakRef   = useRef(null)
   const inputRef   = useRef(null)
-  const [messages,     setMessages]     = useState([])
-  const [loading,      setLoading]      = useState(false)
-  const [pickedSongs,  setPickedSongs]  = useState([])
+  const [messages,      setMessages]      = useState([])
+  const [loading,       setLoading]       = useState(false)
+  const [pickedSongs,   setPickedSongs]   = useState([])
+  const [loaderVisible, setLoaderVisible] = useState(true)
+  const [loaderFading,  setLoaderFading]  = useState(false)
+  const [profileBuilt,  setProfileBuilt]  = useState(false)
+  const messagesRef = useRef([])
+
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
+
+  useEffect(() => {
+    if (pickedSongs.length === 5 && !profileBuilt) {
+      setProfileBuilt(true)
+      const songList = pickedSongs.map(s => `"${s.title}" by ${s.artist}`).join(', ')
+      const autoMsg  = `I just picked 5 songs I love: ${songList}. Based on these picks, what can you tell about my music taste? Please recommend new songs I haven't heard — do not suggest any of the songs I just listed.`
+      sendMessage(autoMsg)
+    }
+  }, [pickedSongs])
+
+  useEffect(() => {
+    const fadeTimer = setTimeout(() => setLoaderFading(true), 3000)
+    const hideTimer = setTimeout(() => setLoaderVisible(false), 3600)
+    return () => { clearTimeout(fadeTimer); clearTimeout(hideTimer) }
+  }, [])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -34,7 +57,7 @@ export default function AvatarScene() {
 
     // Camera
     const camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 0.1, 20)
-    camera.position.set(0, 1.4, -4.0)
+    camera.position.set(-0.4, 1.4, -4.0)
     camera.lookAt(0, 1.4, 0)
 
     // Lights
@@ -50,6 +73,7 @@ export default function AvatarScene() {
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.target.set(0, 1.4, 0)
     controls.enableDamping = true
+    controls.enabled = false
     controls.update()
 
     // Shared loader
@@ -164,13 +188,9 @@ export default function AvatarScene() {
     }
   }, [])
 
-  async function handleSend() {
-    const text = inputRef.current?.value?.trim()
-    if (!text || loading) return
-    inputRef.current.value = ''
-
+  async function sendMessage(text) {
     const userMsg = { role: 'user', content: text }
-    const history = [...messages, userMsg]
+    const history = [...messagesRef.current, userMsg]
     setMessages(history)
     setLoading(true)
 
@@ -184,9 +204,9 @@ export default function AvatarScene() {
       const reply = data.response
 
       setMessages(prev => [...prev, {
-        role:  'assistant',
+        role:    'assistant',
         content: reply,
-        songs: data.recommendations ?? null,
+        songs:   data.recommendations ?? null,
       }])
       speakRef.current?.(reply)
     } catch (err) {
@@ -194,6 +214,13 @@ export default function AvatarScene() {
     } finally {
       setLoading(false)
     }
+  }
+
+  async function handleSend() {
+    const text = inputRef.current?.value?.trim()
+    if (!text || loading) return
+    inputRef.current.value = ''
+    sendMessage(text)
   }
 
   function handleKeyDown(e) {
@@ -218,6 +245,49 @@ export default function AvatarScene() {
   return (
     <>
       <canvas ref={canvasRef} style={{ display: 'block', width: '100vw', height: '100vh' }} />
+
+      {/* Loading screen */}
+      {loaderVisible && (
+        <div style={{
+          position:   'fixed',
+          inset:      0,
+          zIndex:     100,
+          display:    'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'linear-gradient(135deg, #0f0a1e 0%, #1e0a3c 50%, #0a0a1e 100%)',
+          transition: 'opacity 0.6s ease',
+          opacity:    loaderFading ? 0 : 1,
+          pointerEvents: loaderFading ? 'none' : 'auto',
+        }}>
+          {/* Pulsing ring */}
+          <div style={{
+            width:        90,
+            height:       90,
+            borderRadius: '50%',
+            border:       '3px solid rgba(124,58,237,0.2)',
+            borderTop:    '3px solid #a855f7',
+            animation:    'spin 1.2s linear infinite',
+            marginBottom: 32,
+          }} />
+
+          <div style={{ fontFamily: 'sans-serif', textAlign: 'center' }}>
+            <div style={{ fontSize: 32, fontWeight: 700, color: '#fff', letterSpacing: 2 }}>
+              Esme
+            </div>
+            <div style={{ fontSize: 14, color: 'rgba(168,85,247,0.9)', marginTop: 8, letterSpacing: 1 }}>
+              ♪ loading your music experience...
+            </div>
+          </div>
+
+          <style>{`
+            @keyframes spin {
+              to { transform: rotate(360deg); }
+            }
+          `}</style>
+        </div>
+      )}
 
       {/* Picked songs panel */}
       <div style={{
@@ -394,7 +464,7 @@ export default function AvatarScene() {
         <input
           ref={inputRef}
           onKeyDown={handleKeyDown}
-          placeholder="Say something to Esme..."
+          placeholder={loading ? 'Esme is thinking...' : 'Say something to Esme...'}
           disabled={loading}
           style={{
             padding:       '12px 16px',
