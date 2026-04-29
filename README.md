@@ -1,191 +1,83 @@
-# 🎵 Music Recommender Simulation
+# 🎵 Esme — AI Music Recommender with 3D Avatar
 
-## Project Summary
-
-In this project you will build and explain a small music recommender system.
-
-Your goal is to:
-
-- Represent songs and a user "taste profile" as data
-- Design a scoring rule that turns that data into recommendations
-- Evaluate what your system gets right and wrong
-- Reflect on how this mirrors real world AI recommenders
-
-Replace this paragraph with your own summary of what your version does.
+A full-stack AI music assistant built in two phases. The original rule-based Python recommender (Modules 1–3) was extended into a live web app featuring a 3D talking avatar, Claude-powered conversation, real song data from Last.fm, and ElevenLabs voice synthesis.
 
 ---
 
-## How The System Works
+## Docs
 
-The system works like a friend who knows your taste in music. You tell them what kind of songs you like, and they go through a catalog to find the ones that match your vibe as closely as possible.
-
-### What each Song knows about itself
-
-Every song in the catalog carries two types of information:
-
-- *Audio feel*: energy (how intense or calm), valence (how happy or sad it sounds), danceability, tempo (speed in beats per minute), and acousticness (how organic vs. electronic it sounds)
-- *Labels*: genre (e.g., pop, lofi, rock), mood (e.g., happy, chill, intense), artist, and title
-
-### What the User Profile stores
-
-The user profile is a snapshot of your taste:
-
-- Your preferred level for each audio feature — for example, “I like high-energy, happy-sounding, very danceable songs”
-- Your preferred genres and moods (e.g., pop and lofi; happy and chill)
-- How much each feature matters to you (so genre can count more than tempo if you care more about style than speed)
-
-### Algorithm Recipe
-
-Every song in the catalog is scored against the user profile using a point system. Points are added up — the highest total wins. The maximum possible score is **9.0 points**.
-
-| Feature | Max points | How it is calculated |
-| --- | --- | --- |
-| Genre match | +2.0 | Full points if the song's genre exactly matches the user's favorite genre; zero otherwise |
-| Energy | +2.0 | Full points if energy is identical to the target; fewer points the further away it is |
-| Acousticness | +1.5 | Same closeness logic — rewards organic/acoustic songs for acoustic-leaning users |
-| Mood match | +1.0 | Full points if the mood label matches exactly; zero otherwise |
-| Valence | +1.0 | Closeness to the user's preferred happy-vs-sad level |
-| Tempo | +1.0 | Closeness to the user's preferred BPM, normalized across the catalog's speed range |
-| Danceability | +0.5 | Tiebreaker only — it overlaps a lot with energy, so it counts least |
-
-**Why genre outweighs mood (+2.0 vs +1.0):** Genre captures a stable, consistent sound — lofi and metal are worlds apart even if both happen to be labeled "intense." Mood labels are more subjective and inconsistent, so they count half as much.
-
-**Why energy and acousticness are the top numeric features:** Together they define the core "vibe" of a song — how calm or intense it feels, and how organic or electronic it sounds. A user who wants quiet, acoustic study music will be correctly steered away from loud electronic tracks even if the genre or mood label is missing.
-
-### How the final recommendations are chosen
-
-1. Every song in the catalog gets a score
-2. Songs are sorted from highest to lowest score
-3. A diversity check runs: if two top songs are by the same artist, the lower-ranked one is skipped so the list feels more varied
-4. The top 5 songs after that check become the recommendations
-
-### Known biases and limitations
-
-- **Genre lock-in.** Because genre is worth +2.0 — more than any single numeric feature — a song in the wrong genre will almost never reach the top 5, even if it is a near-perfect match on every audio feature. A deeply acoustic, slow, melancholic *pop* song will lose to a mediocre *lofi* track for a "lofi" user.
-
-- **Exact-match only for categories.** Genre and mood are all-or-nothing. A user who likes "lofi" gets zero credit for an "ambient" song, even though the two genres sound nearly identical. There is no partial credit for close categories.
-
-- **Single target per feature.** The profile stores one preferred energy level, one preferred tempo, etc. A user whose taste varies by time of day (upbeat in the morning, chill at night) cannot express that nuance — the system picks an average that may satisfy neither mood.
-
-- **Small catalog amplifies all of the above.** With only 18 songs, a bias toward one genre can eliminate most of the catalog immediately. In a real system with millions of tracks this effect is diluted; here it is stark.
-
-### Data flow diagram
-
-```mermaid
-flowchart TD
-    A([User Profile\ngenre, mood, energy\nvalence, tempo\nacousticness, danceability])
-    B[(songs.csv\n18 songs)]
-
-    A --> D
-    B -->|load_songs| C[Song list in memory]
-    C --> D
-
-    D[For each song in catalog] --> E
-
-    subgraph SCORE ["score_song() — max 9.0 pts"]
-        E["Genre match?  yes +2.0  /  no +0.0"] --> F
-        F["Mood match?   yes +1.0  /  no +0.0"] --> G
-        G["Energy closeness  x2.0  — max +2.0"] --> H
-        H["Acousticness closeness  x1.5  — max +1.5"] --> I
-        I["Valence closeness  x1.0  — max +1.0"] --> J
-        J["Tempo closeness  x1.0  — max +1.0"] --> K
-        K["Danceability closeness  x0.5  — max +0.5"] --> L
-        L["Song total score  0.0 to 9.0"]
-    end
-
-    L --> L2["Build explanation\ntop 3 reasons by points"]
-    L2 --> M{More songs\nto score?}
-    M -->|yes| D
-    M -->|no| N
-
-    N["Sort all songs highest to lowest score"] --> O
-
-    O{Enough distinct\nartists for k=5?}
-    O -->|yes| P["Diversity filter\none song per artist"]
-    O -->|no| Q["Take top 5 as-is"]
-
-    P --> R([Top 5 Recommendations\nwith score and explanation])
-    Q --> R
-```
+- [System diagram](docs/system-diagram.md) — components, data flow, human-in-the-loop
+- [How it works](docs/how-it-works.md) — scoring algorithm, data flow, biases
+- [Test profiles & results](docs/profiles.md) — realistic and adversarial profiles
+- [Testing & reliability](docs/testing.md) — unit tests, confidence scores, error logs, human eval
+- [Model card](docs/model_card.md)
 
 ---
 
-### Sample Terminal Output
+## Original Project (Modules 1–3)
 
-![alt text](image.png)
+The foundation of this project is **What You Are (WYA)** — a rule-based music recommender built entirely in Python without any external AI or music APIs. It represents a user's taste as a numeric profile (preferred energy, tempo, valence, acousticness, danceability, genre, and mood), scores every song in an 18-song catalog against that profile using a weighted point system (max 9.0 pts), and returns the top 5 with plain-English explanations. The goal was to understand how recommender systems turn data into predictions, where bias creeps in, and what trade-offs designers face when encoding taste into numbers.
 
-### Different Profiles
-![alt text](image-1.png)
-![alt text](image-2.png)
-![alt text](image-3.png)
-![alt text](image-4.png)
-![alt text](image-5.png)
-![alt text](image-6.png)
+---
 
-#### Realistic profiles
+## What This Project Does
 
-| Profile | #1 result | Why it makes sense |
-| --- | --- | --- |
-| Chill Lofi Student | Library Rain (8.78) | Exact genre + mood match, near-perfect energy and acousticness |
-| High-Energy Pop Fan | Gym Hero (8.92) | Only song with genre, mood, and energy all matching simultaneously |
-| Deep Intense Rock | Storm Runner (8.80) | Only rock/intense song; locks in both genre and mood bonuses |
+Esme is a 3D avatar who lives in a virtual classroom and recommends music through natural conversation. You chat with her, she pulls real songs from Last.fm using Claude as the reasoning layer, and she speaks the results aloud. As you pick songs you like, she builds a picture of your taste — after 5 picks she gives you a personalized recommendation based on what she's learned. If you don't have API keys, the app falls back silently to the original Python recommender, so it always works.
 
-#### Adversarial profiles — what they expose
+---
 
-| Profile | Interesting finding |
-| --- | --- |
-| Conflicted (high energy + melancholic) | "Ember and Ash" wins at 8.72 with genre + energy match. But #2 is rock, not metal — the valence mismatch (wanting 0.15, rock has 0.48) costs ~0.66 pts but doesn't knock it out of the top 5. Energy dominates. |
-| Missing genre (opera) | Genre bonus never fires. The ranking falls back entirely on numeric features. Moonlit Serenade rises to #1 on mood match + near-zero energy + near-perfect acousticness — correct result, no genre label needed. |
-| Average user (all 0.5) | Scores compress: #1 gets 7.83, #2 drops to 5.61. Without strong numeric preferences, the only differentiator is whether a genre or mood bonus fires — exposing how much the system relies on categorical matches. |
+## Architecture Overview
 
+The system has three layers that work together:
 
-## Getting Started
+**Frontend** (React + Three.js) renders Esme as a VRM 3D avatar with procedural animations — idle breathing, blinking, and amplitude-driven lip sync. The chat UI sits on the right; the liked songs panel sits on the left.
 
-### Setup
+**Backend** (FastAPI) is the orchestration layer. On each `/chat` request it checks whether API keys are set: if yes, it uses Claude to extract genre and mood from the user's message, fetches matching tracks from Last.fm, then passes the track list back to Claude to form a spoken reply. If either key is missing, it falls back to keyword matching against the original Python recommender.
 
-1. Create a virtual environment (optional but recommended):
+**AI Layer** (Claude Haiku + Last.fm) — Claude uses tool use to call `get_recommendations`, which hits the Last.fm `tag.gettoptracks` endpoint. This two-pass design keeps Claude focused on language and delegates data fetching to a real music API.
 
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate      # Mac or Linux
-   .venv\Scripts\activate         # Windows
+> See the full [system diagram](docs/system-diagram.md) and [how it works](docs/how-it-works.md) for more detail.
 
-2. Install dependencies
+---
+
+## Setup Instructions
+
+### Prerequisites
+
+- Python 3.9+
+- Node.js 18+
+
+### 1. Clone and install Python dependencies
 
 ```bash
+git clone <repo-url>
+cd applied-ai-system-project
+python -m venv .venv
+source .venv/bin/activate      # Mac/Linux
+.venv\Scripts\activate         # Windows
 pip install -r requirements.txt
 ```
 
-3. Run the app:
+### 2. Configure API keys
 
-```bash
-python -m src.main
+Create `backend/.env`:
+
+```env
+ANTHROPIC_API_KEY=your_key_here
+LASTFM_API_KEY=your_key_here
+
+# Optional — leave blank to use browser TTS
+ELEVENLABS_API_KEY=
+ELEVENLABS_VOICE_ID=
 ```
 
-### Running Tests
+| Key | Where to get it | Required? |
+| --- | --- | --- |
+| `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com) | No — falls back to local recommender |
+| `LASTFM_API_KEY` | [last.fm/api](https://www.last.fm/api/account/create) | No — falls back to local recommender |
+| `ELEVENLABS_API_KEY` | [elevenlabs.io](https://elevenlabs.io) | No — falls back to browser TTS |
 
-Run the starter tests with:
-
-```bash
-pytest
-```
-
-You can add more tests in `tests/test_recommender.py`.
-
----
-
-## Running the Full Project
-
-The project has three independent pieces. Start them in this order:
-
-### 1. Python recommender CLI (optional, standalone check)
-
-```bash
-pip install -r requirements.txt
-python -m src.main
-```
-
-### 2. Backend — FastAPI server (port 8001)
+### 3. Start the backend
 
 ```bash
 cd backend
@@ -193,7 +85,7 @@ pip install -r requirements.txt
 python -m uvicorn main:app --reload --port 8001
 ```
 
-### 3. Frontend — React + Three.js (port 5173)
+### 4. Start the frontend
 
 ```bash
 cd web
@@ -201,25 +93,124 @@ npm install
 npm run dev
 ```
 
-Then open `http://localhost:5173` in your browser to see the Esme avatar chat interface.
+Open `http://localhost:5173`.
+
+### 5. Run tests (optional)
+
+```bash
+pytest
+```
 
 ---
 
-## API Keys Required
+## Sample Interactions
 
-The backend needs two keys. Create a file at `backend/.env` with the following content:
+### 1 — Genre-based recommendation
 
-```env
-ANTHROPIC_API_KEY=your_anthropic_key_here
-LASTFM_API_KEY=your_lastfm_key_here
-```
+**User:** I'm in a chill mood, recommend some songs
 
-| Key | What it's for | Where to get it |
-| --- | --- | --- |
-| `ANTHROPIC_API_KEY` | Powers Esme's chat responses via Claude | [console.anthropic.com](https://console.anthropic.com) |
-| `LASTFM_API_KEY` | Fetches real song recommendations from Last.fm | [last.fm/api](https://www.last.fm/api/account/create) — free account required |
+**Esme:** Perfect vibes! I'd start with "Coffee and Chill" by Idealism or "Rainfall" by ChilledCow — both are smooth and easy to melt into.
 
-The backend will return a 500 error on `/chat` or `/recommend` if either key is missing or not loaded.
+> Song cards appear: 5 lofi tracks from Last.fm
+
+---
+
+### 2 — Mood-based recommendation
+
+**User:** I need something to hype me up for the gym
+
+**Esme:** Let's get you moving! Check out "Legends Never Die" by Against the Current or "Warrior" by Ke$ha — both hit hard right from the start.
+
+> Song cards appear: 5 high-energy tracks from Last.fm
+
+---
+
+### 3 — 5-pick profile trigger
+
+> User picks 5 songs from recommendation cards over multiple messages
+
+**Esme (auto-triggered):** I've been paying attention — you've been gravitating toward slow, acoustic tracks with a melancholic edge. I'd bet you'd love "Asleep Among Endives" by Ichiko Aoba or something from Grouper. Here are five picks I think will feel just right.
+
+> Fresh song cards appear — none overlap with previously picked songs
+
+---
+
+### 4 — Fallback mode (no API keys)
+
+**User:** play me something jazzy and relaxed
+
+**Esme:** Here are some tracks I think you'll enjoy! I'd start with "Coffee Shop Stories" and "Midnight Drizzle."
+
+> Song cards appear: top 5 from the local songs.csv catalog, scored by the Python recommender
+
+---
+
+## Design Decisions
+
+### Why Claude + tool use instead of direct API calls?
+
+Letting Claude extract genre and mood from natural language means users don't have to type structured queries. "Something for a rainy Sunday morning" becomes a Last.fm tag lookup automatically. The two-pass design (Claude → Last.fm → Claude) keeps the AI focused on language while a real data source handles the music.
+
+### Why keep the Python recommender as a fallback?
+
+The original Module 1–3 project shouldn't be throwaway code. Someone without API keys can still get a working recommender, and the original scoring logic stays.
+
+### Why amplitude-driven lip sync instead of viseme data?
+
+ElevenLabs viseme timing requires their streaming WebSocket API, which is significantly more complex to implement. Using the Web Audio API `AnalyserNode` to read real-time amplitude gives a large improvement, the jaw opens more during loud syllables and closes during silence.
+
+### Why a liked songs panel instead of an explicit profile form?
+
+Letting them pick songs they like during natural conversation is lower effort and produces signal that's grounded in actual music rather than abstract sliders.
+
+### Trade-offs made
+
+- The 18-song local catalog is tiny — bias toward genres that appear more than once is unavoidable
+- Genre and mood matching are exact-match only 
+- The 5-pick threshold is arbitrary since some users express taste clearly with 2 picks, others need 10
+
+---
+
+## Testing Summary
 
 
+### What didn't work
+
+- The first ElevenLabs integration used a hardcoded voice ID (Rachel) that requires a paid plan. Better error logging was added and the backend was updated to auto-select the first voice in the user's account. You can also pick from free voices from ElevenLabs API
+- Browser TTS lip sync using a fixed sine wave and was visually disconnected from speech which means that the mouth moved at a constant rate regardless of what was being said
+
+### What was learned
+
+- Fallback logic is only trustworthy once you've actually disabled the primary path and tested it end to end
+- Small weight changes in the scoring fallback logic algorithm produces surprisingly large ranking changes. Example: shifting energy from 2.0 to 1.5 reorders the top 5 for most profiles
+
+---
+
+## Reflection
+
+Building this project came in two phases. It was first created as a pure rule-based system, then as a live AI app. The rule-based recommender is completely transparent: you can trace exactly why any song was chosen, and changing the weights has predictable, auditable effects. The Claude layer is the opposite: it produces more natural results but you can't always explain why it chose to extract "lofi" from one message and "chill" from another.
+
+The most surprising lesson was how much the small catalog amplifies design flaws. In a real system with millions of songs, a 2-point genre bonus is one signal among many. With 18 songs, it's often the entire ranking. That made biases that would be invisible at scale immediately obvious and impossible to ignore.
+
+Working on the avatar layer (lip sync, animations, TTS) was a reminder that AI features only feel polished when the surrounding experience feels right. Esme's recommendations could be excellent, but if her mouth doesn't move when she speaks, the interaction feels broken. The non-AI parts of the system matter as much as the model.
+
+---
+
+## Responsible AI
+
+### Limitations and Biases
+
+Claude's genre and mood extraction is only as good as what the user says so, if someone types "play me something for studying," Claude may infer "lofi" or "chill" based on patterns in its training data, which reflects a Western, English-language music context. Users describing niche or non-Western genres may get misclassified results because Last.fm's tag system also skews toward mainstream categories. ElevenLabs adds another layer: the available free-tier voices are limited and may not feel representative or culturally neutral to all users.
+
+### Could This AI Be Misused?
+
+The main risk is the Claude layer being used to steer conversation off-topic, since the system prompt instructs Claude to stay focused on music but does not hard-block other topics. The `MUSIC_KEYWORDS` filter reduces this by only forcing tool use when music terms are detected, but freeform conversation is still possible. A more serious concern at scale would be Last.fm tag manipulation. If bad actors flood a tag with irrelevant tracks, Claude's recommendations for that genre would quietly degrade without any visible error.
+
+### What Surprised Me During Testing
+
+Claude's ability to extract intent from vague, casual language was more reliable than expected. Phrases like "something for a rainy Sunday" consistently mapped to reasonable genre tags without any explicit instructions about how to interpret mood metaphors. What was less reliable was Claude's tendency to name specific song titles in its spoken response even when those songs weren't in the actual Last.fm results returned, meaning Esme would sometimes confidently recommend a track that wasn't in the card list shown to the user.
+
+### Collaboration with AI
+
+Working with Claude throughout this project was genuinely useful for moving fast on implementation details! The amplitude-driven lip sync using the Web Audio API `AnalyserNode` was a suggestion I wouldn't have reached as quickly on my own, and it produced a measurable improvement over the fixed sine wave approach with very little added complexity. On the other hand, the initial ElevenLabs integration was flawed: Claude defaulted to a hardcoded Rachel voice ID that turned out to require a paid plan, and the error handling swallowed the failure silently so the feature appeared to work until logs were added. It was a reminder that AI-generated code needs to be tested against live systems, not just reviewed for logical correctness.
 
