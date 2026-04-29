@@ -14,6 +14,17 @@ A full-stack AI music assistant built in two phases. The original rule-based Pyt
 
 ---
 
+## Loom
+
+<div>
+    <a href="https://www.loom.com/share/8b9c7005fed24610bfc4ebf585565359">
+      <p>Avatar Music Recommender - 29 April 2026 - Watch Video</p>
+    </a>
+    <a href="https://www.loom.com/share/8b9c7005fed24610bfc4ebf585565359">
+      <img style="max-width:300px;" src="https://cdn.loom.com/sessions/thumbnails/8b9c7005fed24610bfc4ebf585565359-4ead12f491776a14-full-play.gif#t=0.1">
+    </a>
+  </div>
+
 ## Original Project (Modules 1–3)
 
 The foundation of this project is **What You Are (WYA)** — a rule-based music recommender built entirely in Python without any external AI or music APIs. It represents a user's taste as a numeric profile (preferred energy, tempo, valence, acousticness, danceability, genre, and mood), scores every song in an 18-song catalog against that profile using a weighted point system (max 9.0 pts), and returns the top 5 with plain-English explanations. The goal was to understand how recommender systems turn data into predictions, where bias creeps in, and what trade-offs designers face when encoding taste into numbers.
@@ -109,9 +120,10 @@ pytest
 
 **User:** I'm in a chill mood, recommend some songs
 
-**Esme:** Perfect vibes! I'd start with "Coffee and Chill" by Idealism or "Rainfall" by ChilledCow — both are smooth and easy to melt into.
+**Esme:** Perfect vibe for you! I'd suggest starting with "Will He" by Joji or "Kids" by Current Joys—both are totally chill and perfect for unwinding right now. 🎵
 
-> Song cards appear: 5 lofi tracks from Last.fm
+![alt text](docs/esme-1.png)
+
 
 ---
 
@@ -119,30 +131,29 @@ pytest
 
 **User:** I need something to hype me up for the gym
 
-**Esme:** Let's get you moving! Check out "Legends Never Die" by Against the Current or "Warrior" by Ke$ha — both hit hard right from the start.
+**Esme:** Perfect for the gym—I've got some bangers that'll get your adrenaline pumping! "Flashing Lights" and "Touch the Sky" are absolute workout fuel that'll keep your energy sky-high.
 
-> Song cards appear: 5 high-energy tracks from Last.fm
 
+![alt text](docs/esme-2.png)
 ---
 
 ### 3 — 5-pick profile trigger
 
 > User picks 5 songs from recommendation cards over multiple messages
 
-**Esme (auto-triggered):** I've been paying attention — you've been gravitating toward slow, acoustic tracks with a melancholic edge. I'd bet you'd love "Asleep Among Endives" by Ichiko Aoba or something from Grouper. Here are five picks I think will feel just right.
+**Esme (auto-triggered):** I've been paying attention. You've got killer taste—you dig soulful hip-hop with infectious production! Try "Otis" by Jay-Z ft. Kanye West and "Redbone" by Childish Gambino for that same smooth, energetic vibe.
 
-> Fresh song cards appear — none overlap with previously picked songs
-
+![alt text](docs/esme-3.png)
 ---
 
 ### 4 — Fallback mode (no API keys)
 
 **User:** play me something jazzy and relaxed
 
-**Esme:** Here are some tracks I think you'll enjoy! I'd start with "Coffee Shop Stories" and "Midnight Drizzle."
+**Esme:** Here are some tracks I think you'll enjoy! I'd start with "Coffee Shop Stories" and "Slow Burn Summer".
 
 > Song cards appear: top 5 from the local songs.csv catalog, scored by the Python recommender
-
+![alt text](docs/esme-4.png)
 ---
 
 ## Design Decisions
