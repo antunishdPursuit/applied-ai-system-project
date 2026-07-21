@@ -1,5 +1,6 @@
 import sys
 import os
+from urllib.parse import urlparse
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from fastapi import FastAPI, HTTPException
@@ -159,7 +160,14 @@ def _format_tracks(tracks: list) -> list[dict]:
         artist = track.get("artist", {}) if isinstance(track, dict) else {}
         artist_name = artist.get("name") if isinstance(artist, dict) else None
         if name and artist_name:
-            formatted.append({"title": name, "artist": artist_name, "url": track.get("url", "")})
+            raw_url = track.get("url", "")
+            parsed_url = urlparse(raw_url)
+            hostname = parsed_url.hostname or ""
+            safe_url = raw_url if (
+                parsed_url.scheme == "https"
+                and (hostname == "last.fm" or hostname.endswith(".last.fm"))
+            ) else ""
+            formatted.append({"title": name, "artist": artist_name, "url": safe_url})
     return formatted
 
 

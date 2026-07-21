@@ -9,6 +9,7 @@ import { createWaveState, triggerWave, applyRestPose, updateWave } from '../anim
 import { createLipSyncState, startSpeaking, stopSpeaking, updateLipSync } from '../animations/lipsync.js'
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8001').replace(/\/$/, '')
+const MAX_CHAT_MESSAGES = 20
 
 export default function AvatarScene() {
   const canvasRef  = useRef(null)
@@ -266,6 +267,7 @@ export default function AvatarScene() {
   async function sendMessage(text) {
     const userMsg = { role: 'user', content: text }
     const history = [...messagesRef.current, userMsg]
+    const requestHistory = history.slice(-MAX_CHAT_MESSAGES)
     setMessages(history)
     setLoading(true)
 
@@ -273,7 +275,7 @@ export default function AvatarScene() {
       const res  = await fetch(`${API_BASE_URL}/chat`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ messages: history }),
+        body:    JSON.stringify({ messages: requestHistory }),
       })
       if (!res.ok) throw new Error(`Chat request failed with status ${res.status}`)
       const data = await res.json()
@@ -405,8 +407,11 @@ export default function AvatarScene() {
           </div>
         )}
 
-        {pickedSongs.map((s, i) => (
-          <div key={i} style={{
+        {pickedSongs.map((s, i) => {
+          const safeUrl = safeLastFmUrl(s.url)
+          const SongDetails = safeUrl ? 'a' : 'div'
+          return (
+          <div key={`${s.title}-${s.artist}`} style={{
             display:        'flex',
             alignItems:     'center',
             gap:            6,
@@ -416,10 +421,8 @@ export default function AvatarScene() {
             borderRadius:   8,
             padding:        '6px 10px',
           }}>
-            <a
-              href={s.url}
-              target="_blank"
-              rel="noreferrer"
+            <SongDetails
+              {...(safeUrl ? { href: safeUrl, target: '_blank', rel: 'noreferrer' } : {})}
               style={{ flex: 1, overflow: 'hidden', textDecoration: 'none' }}
             >
               <div style={{ fontSize: 12, fontWeight: 600, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -428,7 +431,7 @@ export default function AvatarScene() {
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {s.artist}
               </div>
-            </a>
+            </SongDetails>
             <button
               onClick={() => removePick(i)}
               title="Remove"
@@ -447,7 +450,8 @@ export default function AvatarScene() {
               ♥
             </button>
           </div>
-        ))}
+          )
+        })}
       </div>
 
       {/* Chat history */}
@@ -599,5 +603,17 @@ function btnStyle(bg) {
     fontSize: 15,
     cursor: 'pointer',
     whiteSpace: 'nowrap',
+  }
+}
+
+function safeLastFmUrl(value) {
+  if (!value) return null
+
+  try {
+    const url = new URL(value)
+    const isLastFm = url.hostname === 'last.fm' || url.hostname.endsWith('.last.fm')
+    return url.protocol === 'https:' && isLastFm ? url.href : null
+  } catch {
+    return null
   }
 }

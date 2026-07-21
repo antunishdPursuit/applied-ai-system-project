@@ -95,3 +95,17 @@ def test_chat_awaits_async_anthropic_client(monkeypatch):
 def test_lastfm_requests_identify_the_application():
     assert "User-Agent" in api.LASTFM_HEADERS
     assert "applied-ai-system-project" in api.LASTFM_HEADERS["User-Agent"]
+
+
+def test_track_links_allow_only_lastfm_https_urls():
+    tracks = [
+        {"name": "Safe", "artist": {"name": "Artist"}, "url": "https://www.last.fm/music/safe"},
+        {"name": "Unsafe", "artist": {"name": "Artist"}, "url": "javascript:alert(1)"},
+        {"name": "Other", "artist": {"name": "Artist"}, "url": "https://example.com/track"},
+    ]
+
+    formatted = api._format_tracks(tracks)
+
+    assert formatted[0]["url"] == "https://www.last.fm/music/safe"
+    assert formatted[1]["url"] == ""
+    assert formatted[2]["url"] == ""
