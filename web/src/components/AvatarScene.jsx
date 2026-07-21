@@ -44,6 +44,8 @@ export default function AvatarScene() {
   useEffect(() => { voiceEnabledRef.current  = voiceEnabled  }, [voiceEnabled])
   useEffect(() => { useElevenlabsRef.current = useElevenLabs }, [useElevenLabs])
 
+  const chatLimitReached = messages.length >= MAX_CHAT_MESSAGES
+
   useEffect(() => {
     fetch(`${API_BASE_URL}/tts/available`)
       .then(r => r.json())
@@ -270,6 +272,9 @@ export default function AvatarScene() {
   }
 
   async function sendMessage(text) {
+    // Reserve space for both the user's message and Esme's reply.
+    if (messagesRef.current.length + 2 > MAX_CHAT_MESSAGES) return
+
     const userMsg = { role: 'user', content: text }
     const history = [...messagesRef.current, userMsg]
     const requestHistory = history.slice(-MAX_CHAT_MESSAGES)
@@ -306,9 +311,18 @@ export default function AvatarScene() {
 
   async function handleSend() {
     const text = inputRef.current?.value?.trim()
-    if (!text || loading) return
+    if (!text || loading || chatLimitReached) return
     inputRef.current.value = ''
     sendMessage(text)
+  }
+
+  function startNewChat() {
+    messagesRef.current = []
+    setMessages([])
+    if (inputRef.current) {
+      inputRef.current.value = ''
+      inputRef.current.focus()
+    }
   }
 
   function handleKeyDown(e) {
@@ -537,6 +551,29 @@ export default function AvatarScene() {
       </div>
 
       {/* Controls */}
+      {chatLimitReached && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position:       'absolute',
+            bottom:         88,
+            left:           '50%',
+            transform:      'translateX(-50%)',
+            padding:        '8px 12px',
+            borderRadius:   8,
+            background:     'rgba(15,23,42,0.88)',
+            color:          '#fff',
+            fontFamily:     'sans-serif',
+            fontSize:       13,
+            backdropFilter: 'blur(8px)',
+            whiteSpace:     'nowrap',
+          }}
+        >
+          You’ve reached the 20-message limit for this chat. Start a new chat to continue.
+        </div>
+      )}
+
       <div style={{
         position: 'absolute',
         bottom: 32,
@@ -575,8 +612,8 @@ export default function AvatarScene() {
         <input
           ref={inputRef}
           onKeyDown={handleKeyDown}
-          placeholder={loading ? 'Esme is thinking...' : 'Say something to Esme...'}
-          disabled={loading}
+          placeholder={chatLimitReached ? 'Start a new chat to continue' : loading ? 'Esme is thinking...' : 'Say something to Esme...'}
+          disabled={loading || chatLimitReached}
           style={{
             padding:       '12px 16px',
             borderRadius:  8,
@@ -587,13 +624,19 @@ export default function AvatarScene() {
             background:    'rgba(255,255,255,0.15)',
             color:         '#fff',
             backdropFilter:'blur(8px)',
-            opacity:       loading ? 0.6 : 1,
+            opacity:       loading || chatLimitReached ? 0.6 : 1,
           }}
         />
 
-        <button onClick={handleSend} disabled={loading} style={btnStyle('#7c3aed')}>
-          {loading ? '...' : 'Send'}
-        </button>
+        {chatLimitReached ? (
+          <button onClick={startNewChat} style={btnStyle('#7c3aed')}>
+            Start new chat
+          </button>
+        ) : (
+          <button onClick={handleSend} disabled={loading} style={btnStyle('#7c3aed')}>
+            {loading ? '...' : 'Send'}
+          </button>
+        )}
       </div>
     </>
   )
