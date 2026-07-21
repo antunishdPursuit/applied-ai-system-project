@@ -16,3 +16,7 @@ venv/
 
 # Environment variables
 .env
+
+# Local Claude/Codex project guidance
+.claude/
+CLAUDE.md

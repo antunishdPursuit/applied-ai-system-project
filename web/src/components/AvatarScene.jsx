@@ -3,10 +3,17 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm'
-import { VRMAnimationLoaderPlugin, createVRMAnimationClip } from '@pixiv/three-vrm-animation'
+import {
+  VRMAnimationLoaderPlugin,
+  VRMLookAtQuaternionProxy,
+  createVRMAnimationClip,
+} from '@pixiv/three-vrm-animation'
 import { updateIdle, createBlinkState, updateBlink } from '../animations/idle.js'
 import { createWaveState, triggerWave, applyRestPose, updateWave } from '../animations/wave.js'
 import { createLipSyncState, startSpeaking, stopSpeaking, updateLipSync } from '../animations/lipsync.js'
+
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8001').replace(/\/$/, '')
+const MAX_CHAT_MESSAGES = 20
 
 export default function AvatarScene() {
   const canvasRef  = useRef(null)
@@ -37,8 +44,10 @@ export default function AvatarScene() {
   useEffect(() => { voiceEnabledRef.current  = voiceEnabled  }, [voiceEnabled])
   useEffect(() => { useElevenlabsRef.current = useElevenLabs }, [useElevenLabs])
 
+  const chatLimitReached = messages.length >= MAX_CHAT_MESSAGES
+
   useEffect(() => {
-    fetch('http://localhost:8001/tts/available')
+    fetch(`${API_BASE_URL}/tts/available`)
       .then(r => r.json())
       .then(data => {
         setElevenLabsAvailable(data.elevenlabs)
@@ -135,11 +144,12 @@ export default function AvatarScene() {
         vrmRef.current = vrm
         applyRestPose(vrm)
 
-        const em = vrm.expressionManager
-        if (em?.expressionMap) {
-          Object.entries(em.expressionMap).forEach(([name, expr]) => {
-            console.log(name, '→', expr._binds?.length ?? 0, 'binds')
-          })
+        // The animation library creates this proxy implicitly and warns. Creating
+        // the same proxy here keeps look-at tracks explicit and the console clean.
+        if (vrm.lookAt) {
+          const lookAtProxy = new VRMLookAtQuaternionProxy(vrm.lookAt)
+          lookAtProxy.name = 'VRMLookAtQuaternionProxy'
+          vrm.scene.add(lookAtProxy)
         }
 
         loader.load(
@@ -160,7 +170,7 @@ export default function AvatarScene() {
           (err) => console.error('VRMA load error:', err),
         )
       },
-      (p) => console.log(`Loading... ${((p.loaded / p.total) * 100).toFixed(0)}%`),
+      undefined,
       (err) => console.error('VRM load error:', err),
     )
 
@@ -224,7 +234,7 @@ export default function AvatarScene() {
 
     if (useElevenlabsRef.current) {
       try {
-        const res = await fetch('http://localhost:8001/tts', {
+        const res = await fetch(`${API_BASE_URL}/tts`, {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({ text }),
@@ -262,18 +272,24 @@ export default function AvatarScene() {
   }
 
   async function sendMessage(text) {
+    // Reserve space for both the user's message and Esme's reply.
+    if (messagesRef.current.length + 2 > MAX_CHAT_MESSAGES) return
+
     const userMsg = { role: 'user', content: text }
     const history = [...messagesRef.current, userMsg]
+    const requestHistory = history.slice(-MAX_CHAT_MESSAGES)
     setMessages(history)
     setLoading(true)
 
     try {
-      const res  = await fetch('http://localhost:8001/chat', {
+      const res  = await fetch(`${API_BASE_URL}/chat`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ messages: history }),
+        body:    JSON.stringify({ messages: requestHistory }),
       })
+      if (!res.ok) throw new Error(`Chat request failed with status ${res.status}`)
       const data = await res.json()
+      if (!data.response) throw new Error('Chat response did not include a reply')
       const reply = data.response
 
       setMessages(prev => [...prev, {
@@ -284,6 +300,10 @@ export default function AvatarScene() {
       speak(reply)
     } catch (err) {
       console.error('Chat error:', err)
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: "I couldn't connect right now. Please try again.",
+      }])
     } finally {
       setLoading(false)
     }
@@ -291,9 +311,18 @@ export default function AvatarScene() {
 
   async function handleSend() {
     const text = inputRef.current?.value?.trim()
-    if (!text || loading) return
+    if (!text || loading || chatLimitReached) return
     inputRef.current.value = ''
     sendMessage(text)
+  }
+
+  function startNewChat() {
+    messagesRef.current = []
+    setMessages([])
+    if (inputRef.current) {
+      inputRef.current.value = ''
+      inputRef.current.focus()
+    }
   }
 
   function handleKeyDown(e) {
@@ -397,8 +426,11 @@ export default function AvatarScene() {
           </div>
         )}
 
-        {pickedSongs.map((s, i) => (
-          <div key={i} style={{
+        {pickedSongs.map((s, i) => {
+          const safeUrl = safeLastFmUrl(s.url)
+          const SongDetails = safeUrl ? 'a' : 'div'
+          return (
+          <div key={`${s.title}-${s.artist}`} style={{
             display:        'flex',
             alignItems:     'center',
             gap:            6,
@@ -408,10 +440,8 @@ export default function AvatarScene() {
             borderRadius:   8,
             padding:        '6px 10px',
           }}>
-            <a
-              href={s.url}
-              target="_blank"
-              rel="noreferrer"
+            <SongDetails
+              {...(safeUrl ? { href: safeUrl, target: '_blank', rel: 'noreferrer' } : {})}
               style={{ flex: 1, overflow: 'hidden', textDecoration: 'none' }}
             >
               <div style={{ fontSize: 12, fontWeight: 600, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -420,7 +450,7 @@ export default function AvatarScene() {
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {s.artist}
               </div>
-            </a>
+            </SongDetails>
             <button
               onClick={() => removePick(i)}
               title="Remove"
@@ -439,7 +469,8 @@ export default function AvatarScene() {
               ♥
             </button>
           </div>
-        ))}
+          )
+        })}
       </div>
 
       {/* Chat history */}
@@ -520,6 +551,29 @@ export default function AvatarScene() {
       </div>
 
       {/* Controls */}
+      {chatLimitReached && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position:       'absolute',
+            bottom:         88,
+            left:           '50%',
+            transform:      'translateX(-50%)',
+            padding:        '8px 12px',
+            borderRadius:   8,
+            background:     'rgba(15,23,42,0.88)',
+            color:          '#fff',
+            fontFamily:     'sans-serif',
+            fontSize:       13,
+            backdropFilter: 'blur(8px)',
+            whiteSpace:     'nowrap',
+          }}
+        >
+          You’ve reached the 20-message limit for this chat. Start a new chat to continue.
+        </div>
+      )}
+
       <div style={{
         position: 'absolute',
         bottom: 32,
@@ -544,6 +598,7 @@ export default function AvatarScene() {
 
         <button
           onClick={() => elevenLabsAvailable && setUseElevenLabs(v => !v)}
+          disabled={!elevenLabsAvailable}
           title={!elevenLabsAvailable ? 'Add ELEVENLABS_API_KEY to backend/.env to enable' : useElevenLabs ? 'Switch to browser voice' : 'Switch to ElevenLabs voice'}
           style={{
             ...btnStyle(useElevenLabs && elevenLabsAvailable ? '#6d28d9' : '#374151'),
@@ -557,8 +612,8 @@ export default function AvatarScene() {
         <input
           ref={inputRef}
           onKeyDown={handleKeyDown}
-          placeholder={loading ? 'Esme is thinking...' : 'Say something to Esme...'}
-          disabled={loading}
+          placeholder={chatLimitReached ? 'Start a new chat to continue' : loading ? 'Esme is thinking...' : 'Say something to Esme...'}
+          disabled={loading || chatLimitReached}
           style={{
             padding:       '12px 16px',
             borderRadius:  8,
@@ -569,13 +624,19 @@ export default function AvatarScene() {
             background:    'rgba(255,255,255,0.15)',
             color:         '#fff',
             backdropFilter:'blur(8px)',
-            opacity:       loading ? 0.6 : 1,
+            opacity:       loading || chatLimitReached ? 0.6 : 1,
           }}
         />
 
-        <button onClick={handleSend} disabled={loading} style={btnStyle('#7c3aed')}>
-          {loading ? '...' : 'Send'}
-        </button>
+        {chatLimitReached ? (
+          <button onClick={startNewChat} style={btnStyle('#7c3aed')}>
+            Start new chat
+          </button>
+        ) : (
+          <button onClick={handleSend} disabled={loading} style={btnStyle('#7c3aed')}>
+            {loading ? '...' : 'Send'}
+          </button>
+        )}
       </div>
     </>
   )
@@ -591,5 +652,17 @@ function btnStyle(bg) {
     fontSize: 15,
     cursor: 'pointer',
     whiteSpace: 'nowrap',
+  }
+}
+
+function safeLastFmUrl(value) {
+  if (!value) return null
+
+  try {
+    const url = new URL(value)
+    const isLastFm = url.hostname === 'last.fm' || url.hostname.endsWith('.last.fm')
+    return url.protocol === 'https:' && isLastFm ? url.href : null
+  } catch {
+    return null
   }
 }
