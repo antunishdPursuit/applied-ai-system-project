@@ -8,6 +8,8 @@ import { updateIdle, createBlinkState, updateBlink } from '../animations/idle.js
 import { createWaveState, triggerWave, applyRestPose, updateWave } from '../animations/wave.js'
 import { createLipSyncState, startSpeaking, stopSpeaking, updateLipSync } from '../animations/lipsync.js'
 
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8001').replace(/\/$/, '')
+
 export default function AvatarScene() {
   const canvasRef  = useRef(null)
   const vrmRef     = useRef(null)
@@ -38,7 +40,7 @@ export default function AvatarScene() {
   useEffect(() => { useElevenlabsRef.current = useElevenLabs }, [useElevenLabs])
 
   useEffect(() => {
-    fetch('http://localhost:8001/tts/available')
+    fetch(`${API_BASE_URL}/tts/available`)
       .then(r => r.json())
       .then(data => {
         setElevenLabsAvailable(data.elevenlabs)
@@ -224,7 +226,7 @@ export default function AvatarScene() {
 
     if (useElevenlabsRef.current) {
       try {
-        const res = await fetch('http://localhost:8001/tts', {
+        const res = await fetch(`${API_BASE_URL}/tts`, {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({ text }),
@@ -268,12 +270,14 @@ export default function AvatarScene() {
     setLoading(true)
 
     try {
-      const res  = await fetch('http://localhost:8001/chat', {
+      const res  = await fetch(`${API_BASE_URL}/chat`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ messages: history }),
       })
+      if (!res.ok) throw new Error(`Chat request failed with status ${res.status}`)
       const data = await res.json()
+      if (!data.response) throw new Error('Chat response did not include a reply')
       const reply = data.response
 
       setMessages(prev => [...prev, {
@@ -284,6 +288,10 @@ export default function AvatarScene() {
       speak(reply)
     } catch (err) {
       console.error('Chat error:', err)
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: "I couldn't connect right now. Please try again.",
+      }])
     } finally {
       setLoading(false)
     }
