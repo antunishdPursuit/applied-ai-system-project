@@ -3,7 +3,11 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm'
-import { VRMAnimationLoaderPlugin, createVRMAnimationClip } from '@pixiv/three-vrm-animation'
+import {
+  VRMAnimationLoaderPlugin,
+  VRMLookAtQuaternionProxy,
+  createVRMAnimationClip,
+} from '@pixiv/three-vrm-animation'
 import { updateIdle, createBlinkState, updateBlink } from '../animations/idle.js'
 import { createWaveState, triggerWave, applyRestPose, updateWave } from '../animations/wave.js'
 import { createLipSyncState, startSpeaking, stopSpeaking, updateLipSync } from '../animations/lipsync.js'
@@ -138,11 +142,12 @@ export default function AvatarScene() {
         vrmRef.current = vrm
         applyRestPose(vrm)
 
-        const em = vrm.expressionManager
-        if (em?.expressionMap) {
-          Object.entries(em.expressionMap).forEach(([name, expr]) => {
-            console.log(name, '→', expr._binds?.length ?? 0, 'binds')
-          })
+        // The animation library creates this proxy implicitly and warns. Creating
+        // the same proxy here keeps look-at tracks explicit and the console clean.
+        if (vrm.lookAt) {
+          const lookAtProxy = new VRMLookAtQuaternionProxy(vrm.lookAt)
+          lookAtProxy.name = 'VRMLookAtQuaternionProxy'
+          vrm.scene.add(lookAtProxy)
         }
 
         loader.load(
@@ -163,7 +168,7 @@ export default function AvatarScene() {
           (err) => console.error('VRMA load error:', err),
         )
       },
-      (p) => console.log(`Loading... ${((p.loaded / p.total) * 100).toFixed(0)}%`),
+      undefined,
       (err) => console.error('VRM load error:', err),
     )
 
@@ -556,6 +561,7 @@ export default function AvatarScene() {
 
         <button
           onClick={() => elevenLabsAvailable && setUseElevenLabs(v => !v)}
+          disabled={!elevenLabsAvailable}
           title={!elevenLabsAvailable ? 'Add ELEVENLABS_API_KEY to backend/.env to enable' : useElevenLabs ? 'Switch to browser voice' : 'Switch to ElevenLabs voice'}
           style={{
             ...btnStyle(useElevenLabs && elevenLabsAvailable ? '#6d28d9' : '#374151'),

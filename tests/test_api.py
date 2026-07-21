@@ -97,6 +97,15 @@ def test_lastfm_requests_identify_the_application():
     assert "applied-ai-system-project" in api.LASTFM_HEADERS["User-Agent"]
 
 
+def test_local_frontend_origins_cover_supported_dev_urls():
+    assert set(api.LOCAL_FRONTEND_ORIGINS) == {
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174",
+    }
+
+
 def test_track_links_allow_only_lastfm_https_urls():
     tracks = [
         {"name": "Safe", "artist": {"name": "Artist"}, "url": "https://www.last.fm/music/safe"},
