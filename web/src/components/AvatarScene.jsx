@@ -14,6 +14,7 @@ import { createLipSyncState, startSpeaking, stopSpeaking, updateLipSync } from '
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8001').replace(/\/$/, '')
 const MAX_CHAT_MESSAGES = 20
+const WELCOME_PROMPT = 'Hi, I\u2019m Esme. What kind of songs do you like? You can name a genre, artist, mood, or activity.'
 
 export default function AvatarScene() {
   const canvasRef  = useRef(null)
@@ -486,6 +487,22 @@ export default function AvatarScene() {
         gap: 8,
         fontFamily: 'sans-serif',
       }}>
+        <div
+          aria-label={"Esme\u2019s opening question"}
+          style={{ alignSelf: 'flex-start', maxWidth: '90%' }}
+        >
+          <div style={{
+            background:     'rgba(255,255,255,0.15)',
+            backdropFilter: 'blur(8px)',
+            color:          '#fff',
+            padding:        '8px 12px',
+            borderRadius:   10,
+            fontSize:       13,
+          }}>
+            {WELCOME_PROMPT}
+          </div>
+        </div>
+
         {messages.map((m, i) => (
           <div key={i} style={{ alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '90%' }}>
             <div style={{
