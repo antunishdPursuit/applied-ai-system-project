@@ -70,7 +70,8 @@ a:focus-visible {
 .liked-panel,
 .transcript,
 .esme-response,
-.control-dock {
+.control-dock,
+.classroom-inspector {
   color: var(--esme-text);
   font-family: inherit !important;
 }
@@ -83,7 +84,8 @@ a:focus-visible {
 .liked-song,
 .esme-response,
 .transcript,
-.control-dock {
+.control-dock,
+.classroom-inspector {
   background: var(--esme-surface) !important;
   border: 1px solid var(--esme-border) !important;
   box-shadow: var(--esme-shadow);
@@ -169,6 +171,52 @@ a:focus-visible {
   justify-content: center;
 }
 
+.classroom-inspector {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  z-index: 20;
+  width: min(430px, calc(100vw - 520px));
+  padding: 12px 14px;
+  transform: translateX(-50%);
+  border-radius: 14px;
+  font-size: 0.78rem;
+  pointer-events: none;
+}
+
+.classroom-inspector__heading {
+  margin-bottom: 8px;
+  color: var(--esme-pink);
+  font-weight: 750;
+}
+
+.classroom-inspector p {
+  margin: 0;
+  color: var(--esme-muted);
+}
+
+.classroom-inspector__details {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.classroom-inspector__details div {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.classroom-inspector__details dt {
+  color: var(--esme-muted);
+}
+
+.classroom-inspector__details dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .button {
   border: 1px solid transparent !important;
   border-radius: 12px !important;
@@ -244,6 +292,11 @@ a:focus-visible {
     bottom: 10px !important;
     width: calc(100vw - 20px);
     gap: 6px !important;
+  }
+
+  .classroom-inspector {
+    top: 96px;
+    width: min(420px, calc(100vw - 20px));
   }
 
   .button--secondary {
