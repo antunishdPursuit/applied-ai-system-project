@@ -37,6 +37,7 @@ export default function AvatarScene() {
   const [voiceEnabled,       setVoiceEnabled]       = useState(true)
   const [useElevenLabs,      setUseElevenLabs]      = useState(false)
   const [elevenLabsAvailable, setElevenLabsAvailable] = useState(false)
+  const [transcriptOpen,     setTranscriptOpen]     = useState(false)
   const messagesRef      = useRef([])
   const voiceEnabledRef  = useRef(true)
   const useElevenlabsRef = useRef(true)
@@ -46,6 +47,7 @@ export default function AvatarScene() {
   useEffect(() => { useElevenlabsRef.current = useElevenLabs }, [useElevenLabs])
 
   const chatLimitReached = messages.length >= MAX_CHAT_MESSAGES
+  const latestEsmeMessage = messages.slice().reverse().find(message => message.role === 'assistant')
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/tts/available`)
@@ -346,12 +348,12 @@ export default function AvatarScene() {
   }
 
   return (
-    <>
-      <canvas ref={canvasRef} style={{ display: 'block', width: '100vw', height: '100vh' }} />
+    <main className="esme-app">
+      <canvas ref={canvasRef} className="esme-canvas" />
 
       {/* Loading screen */}
       {loaderVisible && (
-        <div style={{
+        <div className="loading-screen" style={{
           position:   'fixed',
           inset:      0,
           zIndex:     100,
@@ -365,7 +367,7 @@ export default function AvatarScene() {
           pointerEvents: loaderFading ? 'none' : 'auto',
         }}>
           {/* Pulsing ring */}
-          <div style={{
+          <div className="loading-screen__ring" style={{
             width:        90,
             height:       90,
             borderRadius: '50%',
@@ -375,11 +377,11 @@ export default function AvatarScene() {
             marginBottom: 32,
           }} />
 
-          <div style={{ fontFamily: 'sans-serif', textAlign: 'center' }}>
-            <div style={{ fontSize: 32, fontWeight: 700, color: '#fff', letterSpacing: 2 }}>
+          <div className="loading-screen__copy" style={{ fontFamily: 'sans-serif', textAlign: 'center' }}>
+            <div className="loading-screen__title" style={{ fontSize: 32, fontWeight: 700, color: '#fff', letterSpacing: 2 }}>
               Esme
             </div>
-            <div style={{ fontSize: 14, color: 'rgba(168,85,247,0.9)', marginTop: 8, letterSpacing: 1 }}>
+            <div className="loading-screen__status" style={{ fontSize: 14, color: 'rgba(168,85,247,0.9)', marginTop: 8, letterSpacing: 1 }}>
               ♪ loading your music experience...
             </div>
           </div>
@@ -393,7 +395,7 @@ export default function AvatarScene() {
       )}
 
       {/* Picked songs panel */}
-      <div style={{
+      <section className="liked-panel" aria-label="Liked songs" style={{
         position:       'absolute',
         top:            16,
         left:           16,
@@ -405,7 +407,7 @@ export default function AvatarScene() {
         gap:            6,
         fontFamily:     'sans-serif',
       }}>
-        <div style={{
+        <div className="panel-heading" style={{
           color:      '#fff',
           fontSize:   13,
           fontWeight: 600,
@@ -418,7 +420,7 @@ export default function AvatarScene() {
         </div>
 
         {pickedSongs.length === 0 && (
-          <div style={{
+          <div className="panel-empty" style={{
             color:      'rgba(255,255,255,0.4)',
             fontSize:   12,
             padding:    '6px 10px',
@@ -431,7 +433,7 @@ export default function AvatarScene() {
           const safeUrl = safeLastFmUrl(s.url)
           const SongDetails = safeUrl ? 'a' : 'div'
           return (
-          <div key={`${s.title}-${s.artist}`} style={{
+          <div className="liked-song" key={`${s.title}-${s.artist}`} style={{
             display:        'flex',
             alignItems:     'center',
             gap:            6,
@@ -443,6 +445,7 @@ export default function AvatarScene() {
           }}>
             <SongDetails
               {...(safeUrl ? { href: safeUrl, target: '_blank', rel: 'noreferrer' } : {})}
+              className="song-copy"
               style={{ flex: 1, overflow: 'hidden', textDecoration: 'none' }}
             >
               <div style={{ fontSize: 12, fontWeight: 600, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -453,6 +456,7 @@ export default function AvatarScene() {
               </div>
             </SongDetails>
             <button
+              className="icon-button"
               onClick={() => removePick(i)}
               title="Remove"
               style={{
@@ -472,10 +476,14 @@ export default function AvatarScene() {
           </div>
           )
         })}
-      </div>
+      </section>
+
+      <aside className="esme-response" aria-label="Esme’s latest response" aria-live="polite">
+        {latestEsmeMessage?.content ?? WELCOME_PROMPT}
+      </aside>
 
       {/* Chat history */}
-      <div style={{
+      <section className="transcript" aria-label="Conversation transcript" style={{
         position: 'absolute',
         top: 16,
         right: 16,
@@ -486,7 +494,12 @@ export default function AvatarScene() {
         flexDirection: 'column',
         gap: 8,
         fontFamily: 'sans-serif',
+        display: transcriptOpen ? 'flex' : 'none',
       }}>
+        <div className="transcript-heading">
+          <strong>Conversation</strong>
+          <button className="text-button" onClick={() => setTranscriptOpen(false)}>Close</button>
+        </div>
         <div
           aria-label={"Esme\u2019s opening question"}
           style={{ alignSelf: 'flex-start', maxWidth: '90%' }}
@@ -565,7 +578,7 @@ export default function AvatarScene() {
             Esme is thinking...
           </div>
         )}
-      </div>
+      </section>
 
       {/* Controls */}
       {chatLimitReached && (
@@ -591,7 +604,7 @@ export default function AvatarScene() {
         </div>
       )}
 
-      <div style={{
+      <section className="control-dock" aria-label="Talk to Esme" style={{
         position: 'absolute',
         bottom: 32,
         left: '50%',
@@ -601,11 +614,12 @@ export default function AvatarScene() {
         alignItems: 'center',
         fontFamily: 'sans-serif',
       }}>
-        <button onClick={() => triggerRef.current?.()} style={btnStyle('#475569')}>
+        <button className="button button--secondary" onClick={() => triggerRef.current?.()} style={btnStyle('#475569')}>
           Wave Hi 👋
         </button>
 
         <button
+          className="button button--secondary"
           onClick={() => setVoiceEnabled(v => !v)}
           title={voiceEnabled ? 'Disable voice' : 'Enable voice'}
           style={btnStyle(voiceEnabled ? '#475569' : '#1e1e2e')}
@@ -614,6 +628,7 @@ export default function AvatarScene() {
         </button>
 
         <button
+          className="button button--secondary"
           onClick={() => elevenLabsAvailable && setUseElevenLabs(v => !v)}
           disabled={!elevenLabsAvailable}
           title={!elevenLabsAvailable ? 'Add ELEVENLABS_API_KEY to backend/.env to enable' : useElevenLabs ? 'Switch to browser voice' : 'Switch to ElevenLabs voice'}
@@ -626,7 +641,17 @@ export default function AvatarScene() {
           {useElevenLabs && elevenLabsAvailable ? '✨ ElevenLabs' : '💬 Browser'}
         </button>
 
+        <button
+          className="button button--secondary"
+          aria-expanded={transcriptOpen}
+          onClick={() => setTranscriptOpen(value => !value)}
+          style={btnStyle('#475569')}
+        >
+          {transcriptOpen ? 'Hide transcript' : 'Show transcript'}
+        </button>
+
         <input
+          className="composer-input"
           ref={inputRef}
           onKeyDown={handleKeyDown}
           placeholder={chatLimitReached ? 'Start a new chat to continue' : loading ? 'Esme is thinking...' : 'Say something to Esme...'}
@@ -646,16 +671,16 @@ export default function AvatarScene() {
         />
 
         {chatLimitReached ? (
-          <button onClick={startNewChat} style={btnStyle('#7c3aed')}>
+          <button className="button button--primary" onClick={startNewChat} style={btnStyle('#7c3aed')}>
             Start new chat
           </button>
         ) : (
-          <button onClick={handleSend} disabled={loading} style={btnStyle('#7c3aed')}>
+          <button className="button button--primary" onClick={handleSend} disabled={loading} style={btnStyle('#7c3aed')}>
             {loading ? '...' : 'Send'}
           </button>
         )}
-      </div>
-    </>
+      </section>
+    </main>
   )
 }
 
