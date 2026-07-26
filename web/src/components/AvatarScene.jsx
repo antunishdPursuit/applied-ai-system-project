@@ -3,6 +3,7 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm'
 import {
+  createVRMAnimationClip,
   VRMAnimationLoaderPlugin,
   VRMLookAtQuaternionProxy,
 } from '@pixiv/three-vrm-animation'
@@ -12,6 +13,12 @@ import { createAvatarAnimationController } from '../animations/avatarAnimationCo
 import { disableUnwantedSpringBones } from '../animations/avatarPhysics.js'
 import { createWaveState, triggerWave, applyRestPose, updateWave } from '../animations/wave.js'
 import { createLipSyncState, startSpeaking, stopSpeaking, updateLipSync } from '../animations/lipsync.js'
+import {
+  createSpeakingFaceState,
+  startSpeakingFace,
+  stopSpeakingFace,
+  updateSpeakingFace,
+} from '../animations/speakingFace.js'
 import { createClassroomInspector } from '../classroom/classroomInspector.js'
 import {
   createClassroomMovementEnvironment,
@@ -27,6 +34,7 @@ const CLASSROOM_INSPECTION_ENABLED = import.meta.env.DEV
   && PAGE_PARAMETERS.get('inspectClassroom') === '1'
 const COLLISION_DEBUG_ENABLED = import.meta.env.DEV
   && PAGE_PARAMETERS.get('debugCollisions') === '1'
+const LONG_IDLE_ANIMATION_IDS = ['VRMA_01', 'VRMA_03', 'VRMA_06']
 
 export default function AvatarScene() {
   const canvasRef  = useRef(null)
@@ -39,6 +47,9 @@ export default function AvatarScene() {
   const stopLipSyncRef  = useRef(null)
   const analyserRef     = useRef(null)
   const analyserDataRef = useRef(null)
+  const animationControllerRef = useRef(null)
+  const openingGreetingActionRef = useRef(null)
+  const openingGreetingPlayedRef = useRef(false)
   const [messages,      setMessages]      = useState([])
   const [loading,       setLoading]       = useState(false)
   const [pickedSongs,   setPickedSongs]   = useState([])
@@ -50,6 +61,7 @@ export default function AvatarScene() {
   const [elevenLabsAvailable, setElevenLabsAvailable] = useState(false)
   const [transcriptOpen,     setTranscriptOpen]     = useState(false)
   const [inspectedClassroomMesh, setInspectedClassroomMesh] = useState(null)
+  const [openingGreetingReady, setOpeningGreetingReady] = useState(false)
   const messagesRef      = useRef([])
   const voiceEnabledRef  = useRef(true)
   const useElevenlabsRef = useRef(true)
@@ -88,6 +100,24 @@ export default function AvatarScene() {
   }, [])
 
   useEffect(() => {
+    if (
+      loaderVisible
+      || !openingGreetingReady
+      || openingGreetingPlayedRef.current
+    ) {
+      return
+    }
+
+    openingGreetingPlayedRef.current = true
+    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      animationControllerRef.current?.playContextual(
+        openingGreetingActionRef.current,
+      )
+    }
+    speakRef.current?.(WELCOME_PROMPT)
+  }, [loaderVisible, openingGreetingReady])
+
+  useEffect(() => {
     const canvas = canvasRef.current
     let disposed = false
     let disposeClassroomInspector = null
@@ -95,6 +125,48 @@ export default function AvatarScene() {
     let movementController = null
     let collisionDebugView = null
     let animationController = null
+    let mixer = null
+    const contextualActions = new Map()
+    const contextualLoads = new Map()
+
+    function loadVrmaAction(id) {
+      if (disposed) return Promise.resolve(null)
+      if (contextualActions.has(id)) {
+        return Promise.resolve(contextualActions.get(id))
+      }
+      if (contextualLoads.has(id)) {
+        return contextualLoads.get(id)
+      }
+
+      const loadPromise = new Promise((resolve, reject) => {
+        loader.load(
+          `/vrma/${id}.vrma`,
+          (gltf) => {
+            if (disposed) {
+              resolve(null)
+              return
+            }
+
+            const vrmAnimation = gltf.userData.vrmAnimations?.[0]
+            if (!vrmAnimation || !vrmRef.current || !mixer) {
+              reject(new Error(`${id} did not contain a usable VRM animation.`))
+              return
+            }
+
+            const clip = createVRMAnimationClip(vrmAnimation, vrmRef.current)
+            clip.name = id
+            const action = mixer.clipAction(clip)
+            contextualActions.set(id, action)
+            resolve(action)
+          },
+          undefined,
+          reject,
+        )
+      })
+
+      contextualLoads.set(id, loadPromise)
+      return loadPromise
+    }
 
     function startMovementIfReady() {
       if (
@@ -183,17 +255,26 @@ export default function AvatarScene() {
 
     // Lip sync state
     const lipSync = createLipSyncState()
-    startLipSyncRef.current = ()       => startSpeaking(lipSync)
-    stopLipSyncRef.current  = ()       => stopSpeaking(lipSync, vrmRef.current)
+    const speakingFace = createSpeakingFaceState()
+    startLipSyncRef.current = () => {
+      startSpeaking(lipSync)
+      startSpeakingFace(speakingFace)
+      animationControllerRef.current?.setSpeaking(true)
+    }
+    stopLipSyncRef.current = () => {
+      stopSpeaking(lipSync, vrmRef.current)
+      stopSpeakingFace(speakingFace)
+      animationControllerRef.current?.setSpeaking(false)
+    }
 
     // TTS — exposed to speak button
     speakRef.current = (text) => {
       if (!text.trim() || !vrmRef.current) return
       window.speechSynthesis.cancel()
       const utterance       = new SpeechSynthesisUtterance(text)
-      utterance.onstart     = () => startSpeaking(lipSync)
-      utterance.onend       = () => stopSpeaking(lipSync, vrmRef.current)
-      utterance.onerror     = () => stopSpeaking(lipSync, vrmRef.current)
+      utterance.onstart     = () => startLipSyncRef.current?.()
+      utterance.onend       = () => stopLipSyncRef.current?.()
+      utterance.onerror     = () => stopLipSyncRef.current?.()
       window.speechSynthesis.speak(utterance)
     }
 
@@ -224,7 +305,7 @@ export default function AvatarScene() {
           (animationGltf) => {
             if (disposed) return
 
-            const mixer = new THREE.AnimationMixer(vrm.scene)
+            mixer = new THREE.AnimationMixer(vrm.scene)
             const actionFor = (name) => {
               const sourceClip = animationGltf.animations.find(
                 animation => animation.name === name,
@@ -255,8 +336,32 @@ export default function AvatarScene() {
             animationController = createAvatarAnimationController({
               mixer,
               actions: coreActions,
-              idleVariationsEnabled: false,
+              idleVariationsEnabled: !window.matchMedia(
+                '(prefers-reduced-motion: reduce)',
+              ).matches,
             })
+            animationControllerRef.current = animationController
+            Promise.all(LONG_IDLE_ANIMATION_IDS.map(loadVrmaAction))
+              .then((actions) => {
+                if (
+                  !disposed
+                  && animationControllerRef.current === animationController
+                ) {
+                  animationController.setIdleVariations(actions)
+                }
+              })
+              .catch(error => console.error('Long-idle animation load error:', error))
+            loadVrmaAction('VRMA_02')
+              .then((action) => {
+                if (
+                  !disposed
+                  && animationControllerRef.current === animationController
+                ) {
+                  openingGreetingActionRef.current = action
+                  setOpeningGreetingReady(true)
+                }
+              })
+              .catch(error => console.error('Opening greeting load error:', error))
           },
           undefined,
           (err) => {
@@ -307,6 +412,12 @@ export default function AvatarScene() {
         } else {
           updateLipSync(vrm, lipSync, delta)
         }
+        updateSpeakingFace(
+          vrm,
+          speakingFace,
+          delta,
+          { enabled: animationController?.getState() !== 'contextual' },
+        )
         updateWave(vrm, waveRef, delta)
         vrm.update(delta)
       }
@@ -333,6 +444,8 @@ export default function AvatarScene() {
       movementController = null
       animationController?.dispose()
       animationController = null
+      animationControllerRef.current = null
+      openingGreetingActionRef.current = null
       delete window.__ESME_MOVEMENT__
       collisionDebugView?.dispose()
       renderer.dispose()
@@ -369,6 +482,7 @@ export default function AvatarScene() {
           URL.revokeObjectURL(url)
           stopLipSyncRef.current?.()
         }
+        audio.onplay = () => startLipSyncRef.current?.()
         audio.onended = cleanup
         audio.onerror = cleanup
         await audio.play()
