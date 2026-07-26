@@ -49,6 +49,10 @@ The system has three layers that work together:
 
 > See the full [system diagram](docs/system-diagram.md) and [how it works](docs/how-it-works.md) for more detail.
 
+## Third-Party Assets
+
+- Avatar movement uses the [Universal Animation Library](https://quaternius.com/packs/universalanimationlibrary.html) by Quaternius. The included `UAL1_Standard.glb` file is available under the CC0 1.0 public-domain dedication. A copy of the license is stored at `web/public/animations/Quaternius-UAL-License.txt`.
+
 **Mermaid Screenshot**
 
 ![alt text](assets/mermaid.png)
