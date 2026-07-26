@@ -5,9 +5,11 @@ import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm'
 import {
   VRMAnimationLoaderPlugin,
   VRMLookAtQuaternionProxy,
-  createVRMAnimationClip,
 } from '@pixiv/three-vrm-animation'
-import { updateIdle, createBlinkState, updateBlink } from '../animations/idle.js'
+import { createBlinkState, updateBlink } from '../animations/idle.js'
+import { createHumanoidAnimationClip } from '../animations/createHumanoidAnimation.js'
+import { createAvatarAnimationController } from '../animations/avatarAnimationController.js'
+import { disableUnwantedSpringBones } from '../animations/avatarPhysics.js'
 import { createWaveState, triggerWave, applyRestPose, updateWave } from '../animations/wave.js'
 import { createLipSyncState, startSpeaking, stopSpeaking, updateLipSync } from '../animations/lipsync.js'
 import { createClassroomInspector } from '../classroom/classroomInspector.js'
@@ -29,7 +31,6 @@ const COLLISION_DEBUG_ENABLED = import.meta.env.DEV
 export default function AvatarScene() {
   const canvasRef  = useRef(null)
   const vrmRef     = useRef(null)
-  const mixerRef   = useRef(null)
   const waveRef         = useRef(createWaveState())
   const triggerRef      = useRef(null)
   const speakRef        = useRef(null)
@@ -93,6 +94,7 @@ export default function AvatarScene() {
     let movementEnvironment = null
     let movementController = null
     let collisionDebugView = null
+    let animationController = null
 
     function startMovementIfReady() {
       if (
@@ -202,6 +204,7 @@ export default function AvatarScene() {
         if (disposed) return
 
         const vrm = gltf.userData.vrm
+        disableUnwantedSpringBones(vrm)
         VRMUtils.removeUnnecessaryJoints(vrm.scene)
         scene.add(vrm.scene)
         vrmRef.current = vrm
@@ -217,21 +220,48 @@ export default function AvatarScene() {
         }
 
         loader.load(
-          '/vrma/VRMA_01.vrma',
-          (vrmaGltf) => {
-            const vrmAnimation = vrmaGltf.userData.vrmAnimations?.[0]
-            if (!vrmAnimation) return
+          '/animations/UAL1_Standard.glb',
+          (animationGltf) => {
+            if (disposed) return
 
-            const clip = createVRMAnimationClip(vrmAnimation, vrm)
-            clip.tracks = clip.tracks.filter(t => t.name !== 'Normalized_J_Bip_C_Hips.quaternion')
-            const mixer  = new THREE.AnimationMixer(vrm.scene)
-            mixerRef.current = mixer
-            const action = mixer.clipAction(clip)
-            action.setLoop(THREE.LoopPingPong, Infinity)
-            action.play()
+            const mixer = new THREE.AnimationMixer(vrm.scene)
+            const actionFor = (name) => {
+              const sourceClip = animationGltf.animations.find(
+                animation => animation.name === name,
+              )
+              if (!sourceClip) return null
+
+              const clip = createHumanoidAnimationClip({
+                sourceScene: animationGltf.scene,
+                sourceClip,
+                vrm,
+              })
+              return mixer.clipAction(clip)
+            }
+
+            const coreActions = {
+              idle: actionFor('Idle_Loop'),
+              talking: actionFor('Idle_Talking_Loop'),
+              walking: actionFor('Walk_Formal_Loop'),
+              running: actionFor('Jog_Fwd_Loop'),
+            }
+            if (Object.values(coreActions).some(action => !action)) {
+              console.error(
+                'Animation load error: a required idle, talking, walking, or running clip was not found.',
+              )
+              return
+            }
+
+            animationController = createAvatarAnimationController({
+              mixer,
+              actions: coreActions,
+              idleVariationsEnabled: false,
+            })
           },
           undefined,
-          (err) => console.error('VRMA load error:', err),
+          (err) => {
+            if (!disposed) console.error('Animation load error:', err)
+          },
         )
       },
       undefined,
@@ -253,14 +283,19 @@ export default function AvatarScene() {
     function animate() {
       animId = requestAnimationFrame(animate)
       const delta   = clock.getDelta()
-      const elapsed = clock.elapsedTime
       const vrm     = vrmRef.current
 
-      movementController?.update(delta)
+      const movement = movementController?.update(delta) ?? {
+        moving: false,
+        running: false,
+      }
 
       if (vrm) {
-        mixerRef.current?.update(delta)
-        updateIdle(vrm, elapsed)
+        animationController?.setMoving(
+          movement.moving,
+          { running: movement.running },
+        )
+        animationController?.update(delta)
         updateBlink(vrm, blinkState, delta)
         if (analyserRef.current && analyserDataRef.current) {
           analyserRef.current.getByteFrequencyData(analyserDataRef.current)
@@ -296,6 +331,8 @@ export default function AvatarScene() {
       disposeClassroomInspector?.()
       movementController?.dispose()
       movementController = null
+      animationController?.dispose()
+      animationController = null
       delete window.__ESME_MOVEMENT__
       collisionDebugView?.dispose()
       renderer.dispose()
