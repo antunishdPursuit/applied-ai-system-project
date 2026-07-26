@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm'
 import {
   VRMAnimationLoaderPlugin,
@@ -12,12 +11,20 @@ import { updateIdle, createBlinkState, updateBlink } from '../animations/idle.js
 import { createWaveState, triggerWave, applyRestPose, updateWave } from '../animations/wave.js'
 import { createLipSyncState, startSpeaking, stopSpeaking, updateLipSync } from '../animations/lipsync.js'
 import { createClassroomInspector } from '../classroom/classroomInspector.js'
+import {
+  createClassroomMovementEnvironment,
+  createCollisionDebugView,
+} from '../classroom/classroomMovementEnvironment.js'
+import { createAvatarMovementController } from '../classroom/avatarMovementController.js'
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8001').replace(/\/$/, '')
 const MAX_CHAT_MESSAGES = 20
 const WELCOME_PROMPT = 'Hi, I\u2019m Esme. What kind of songs do you like? You can name a genre, artist, mood, or activity.'
+const PAGE_PARAMETERS = new URLSearchParams(window.location.search)
 const CLASSROOM_INSPECTION_ENABLED = import.meta.env.DEV
-  && new URLSearchParams(window.location.search).get('inspectClassroom') === '1'
+  && PAGE_PARAMETERS.get('inspectClassroom') === '1'
+const COLLISION_DEBUG_ENABLED = import.meta.env.DEV
+  && PAGE_PARAMETERS.get('debugCollisions') === '1'
 
 export default function AvatarScene() {
   const canvasRef  = useRef(null)
@@ -81,7 +88,32 @@ export default function AvatarScene() {
 
   useEffect(() => {
     const canvas = canvasRef.current
+    let disposed = false
     let disposeClassroomInspector = null
+    let movementEnvironment = null
+    let movementController = null
+    let collisionDebugView = null
+
+    function startMovementIfReady() {
+      if (
+        CLASSROOM_INSPECTION_ENABLED
+        || movementController
+        || !movementEnvironment
+        || !vrmRef.current
+      ) {
+        return
+      }
+
+      movementController = createAvatarMovementController({
+        avatarRoot: vrmRef.current.scene,
+        camera,
+        canvas,
+        environment: movementEnvironment,
+      })
+      if (COLLISION_DEBUG_ENABLED) {
+        window.__ESME_MOVEMENT__ = movementController
+      }
+    }
 
     // Renderer
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true })
@@ -106,13 +138,6 @@ export default function AvatarScene() {
     fillLight.position.set(-2, 1, -1)
     scene.add(fillLight)
 
-    // Orbit controls
-    const controls = new OrbitControls(camera, renderer.domElement)
-    controls.target.set(0, 1.4, 0)
-    controls.enableDamping = true
-    controls.enabled = false
-    controls.update()
-
     // Shared loader
     const loader = new GLTFLoader()
     loader.register((parser) => new VRMLoaderPlugin(parser))
@@ -122,7 +147,21 @@ export default function AvatarScene() {
     loader.load(
       '/Classroom/scene.gltf',
       (gltf) => {
+        if (disposed) return
+
         scene.add(gltf.scene)
+        movementEnvironment = createClassroomMovementEnvironment({
+          classroomRoot: gltf.scene,
+          parser: gltf.parser,
+        })
+        if (COLLISION_DEBUG_ENABLED) {
+          collisionDebugView = createCollisionDebugView(
+            scene,
+            movementEnvironment,
+          )
+        }
+        startMovementIfReady()
+
         if (CLASSROOM_INSPECTION_ENABLED) {
           disposeClassroomInspector = createClassroomInspector({
             canvas,
@@ -135,7 +174,9 @@ export default function AvatarScene() {
         }
       },
       undefined,
-      (err) => console.error('Classroom load error:', err),
+      (err) => {
+        if (!disposed) console.error('Classroom load error:', err)
+      },
     )
 
     // Lip sync state
@@ -158,11 +199,14 @@ export default function AvatarScene() {
     loader.load(
       '/Esme.vrm',
       (gltf) => {
+        if (disposed) return
+
         const vrm = gltf.userData.vrm
         VRMUtils.removeUnnecessaryJoints(vrm.scene)
         scene.add(vrm.scene)
         vrmRef.current = vrm
         applyRestPose(vrm)
+        startMovementIfReady()
 
         // The animation library creates this proxy implicitly and warns. Creating
         // the same proxy here keeps look-at tracks explicit and the console clean.
@@ -191,7 +235,9 @@ export default function AvatarScene() {
         )
       },
       undefined,
-      (err) => console.error('VRM load error:', err),
+      (err) => {
+        if (!disposed) console.error('VRM load error:', err)
+      },
     )
 
     // Wave trigger
@@ -209,6 +255,8 @@ export default function AvatarScene() {
       const delta   = clock.getDelta()
       const elapsed = clock.elapsedTime
       const vrm     = vrmRef.current
+
+      movementController?.update(delta)
 
       if (vrm) {
         mixerRef.current?.update(delta)
@@ -228,7 +276,6 @@ export default function AvatarScene() {
         vrm.update(delta)
       }
 
-      controls.update()
       renderer.render(scene, camera)
     }
 
@@ -242,10 +289,15 @@ export default function AvatarScene() {
     window.addEventListener('resize', onResize)
 
     return () => {
+      disposed = true
       cancelAnimationFrame(animId)
       window.removeEventListener('resize', onResize)
       window.speechSynthesis.cancel()
       disposeClassroomInspector?.()
+      movementController?.dispose()
+      movementController = null
+      delete window.__ESME_MOVEMENT__
+      collisionDebugView?.dispose()
       renderer.dispose()
     }
   }, [])
