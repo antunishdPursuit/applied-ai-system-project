@@ -19,6 +19,7 @@ import {
   stopSpeakingFace,
   updateSpeakingFace,
 } from '../animations/speakingFace.js'
+import { createClassroomInspectionCamera } from '../classroom/classroomInspectionCamera.js'
 import { createClassroomInspector } from '../classroom/classroomInspector.js'
 import {
   createClassroomMovementEnvironment,
@@ -34,11 +35,30 @@ const CLASSROOM_INSPECTION_ENABLED = import.meta.env.DEV
   && PAGE_PARAMETERS.get('inspectClassroom') === '1'
 const COLLISION_DEBUG_ENABLED = import.meta.env.DEV
   && PAGE_PARAMETERS.get('debugCollisions') === '1'
+const ANIMATION_PREVIEW_ENABLED = import.meta.env.DEV
+  && PAGE_PARAMETERS.get('testAnimations') === '1'
+const QUATERNIUS_PREVIEW_ANIMATIONS = [
+  'Idle_Loop',
+  'Idle_Talking_Loop',
+  'Walk_Loop',
+  'Walk_Formal_Loop',
+  'Jog_Fwd_Loop',
+]
+const VRMA_PREVIEW_ANIMATIONS = [
+  { id: 'VRMA_01', label: 'VRMA 01 — Show full body' },
+  { id: 'VRMA_02', label: 'VRMA 02 — Greeting' },
+  { id: 'VRMA_03', label: 'VRMA 03 — Peace sign' },
+  { id: 'VRMA_04', label: 'VRMA 04 — Shoot' },
+  { id: 'VRMA_05', label: 'VRMA 05 — Spin' },
+  { id: 'VRMA_06', label: 'VRMA 06 — Model pose' },
+  { id: 'VRMA_07', label: 'VRMA 07 — Squat' },
+]
 const LONG_IDLE_ANIMATION_IDS = ['VRMA_01', 'VRMA_03', 'VRMA_06']
 
 export default function AvatarScene() {
   const canvasRef  = useRef(null)
   const vrmRef     = useRef(null)
+  const mixerRef   = useRef(null)
   const waveRef         = useRef(createWaveState())
   const triggerRef      = useRef(null)
   const speakRef        = useRef(null)
@@ -47,6 +67,9 @@ export default function AvatarScene() {
   const stopLipSyncRef  = useRef(null)
   const analyserRef     = useRef(null)
   const analyserDataRef = useRef(null)
+  const classroomInspectorRef = useRef(null)
+  const resetCameraRef = useRef(null)
+  const animationPreviewRef = useRef(null)
   const animationControllerRef = useRef(null)
   const openingGreetingActionRef = useRef(null)
   const openingGreetingPlayedRef = useRef(false)
@@ -61,6 +84,15 @@ export default function AvatarScene() {
   const [elevenLabsAvailable, setElevenLabsAvailable] = useState(false)
   const [transcriptOpen,     setTranscriptOpen]     = useState(false)
   const [inspectedClassroomMesh, setInspectedClassroomMesh] = useState(null)
+  const [classroomInventory, setClassroomInventory] = useState([])
+  const [classroomCollisionZones, setClassroomCollisionZones] = useState([])
+  const [selectedCollisionZone, setSelectedCollisionZone] = useState(null)
+  const [collisionZonesVisible, setCollisionZonesVisible] = useState(true)
+  const [movementReady, setMovementReady] = useState(false)
+  const [previewAnimation, setPreviewAnimation] = useState('Idle_Loop')
+  const [loopVrmaPreview, setLoopVrmaPreview] = useState(false)
+  const [animationPreviewReady, setAnimationPreviewReady] = useState(false)
+  const [animationPreviewStatus, setAnimationPreviewStatus] = useState('Loading animations…')
   const [openingGreetingReady, setOpeningGreetingReady] = useState(false)
   const messagesRef      = useRef([])
   const voiceEnabledRef  = useRef(true)
@@ -120,22 +152,23 @@ export default function AvatarScene() {
   useEffect(() => {
     const canvas = canvasRef.current
     let disposed = false
-    let disposeClassroomInspector = null
+    let classroomInspector = null
+    let classroomInspectionCamera = null
     let movementEnvironment = null
     let movementController = null
     let collisionDebugView = null
     let animationController = null
-    let mixer = null
-    const contextualActions = new Map()
-    const contextualLoads = new Map()
+    const previewActions = new Map()
+    const previewLoads = new Map()
 
-    function loadVrmaAction(id) {
+    function loadVrmaPreview(id) {
       if (disposed) return Promise.resolve(null)
-      if (contextualActions.has(id)) {
-        return Promise.resolve(contextualActions.get(id))
+
+      if (previewActions.has(id)) {
+        return Promise.resolve(previewActions.get(id))
       }
-      if (contextualLoads.has(id)) {
-        return contextualLoads.get(id)
+      if (previewLoads.has(id)) {
+        return previewLoads.get(id)
       }
 
       const loadPromise = new Promise((resolve, reject) => {
@@ -148,15 +181,15 @@ export default function AvatarScene() {
             }
 
             const vrmAnimation = gltf.userData.vrmAnimations?.[0]
-            if (!vrmAnimation || !vrmRef.current || !mixer) {
+            if (!vrmAnimation || !vrmRef.current || !mixerRef.current) {
               reject(new Error(`${id} did not contain a usable VRM animation.`))
               return
             }
 
             const clip = createVRMAnimationClip(vrmAnimation, vrmRef.current)
             clip.name = id
-            const action = mixer.clipAction(clip)
-            contextualActions.set(id, action)
+            const action = mixerRef.current.clipAction(clip)
+            previewActions.set(id, action)
             resolve(action)
           },
           undefined,
@@ -164,7 +197,7 @@ export default function AvatarScene() {
         )
       })
 
-      contextualLoads.set(id, loadPromise)
+      previewLoads.set(id, loadPromise)
       return loadPromise
     }
 
@@ -184,9 +217,11 @@ export default function AvatarScene() {
         canvas,
         environment: movementEnvironment,
       })
+      resetCameraRef.current = movementController.resetCamera
       if (COLLISION_DEBUG_ENABLED) {
         window.__ESME_MOVEMENT__ = movementController
       }
+      setMovementReady(true)
     }
 
     // Renderer
@@ -202,6 +237,10 @@ export default function AvatarScene() {
     const camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 0.1, 20)
     camera.position.set(-0.4, 1.4, -4.0)
     camera.lookAt(0, 1.4, 0)
+
+    if (CLASSROOM_INSPECTION_ENABLED) {
+      classroomInspectionCamera = createClassroomInspectionCamera({ canvas, camera })
+    }
 
     // Lights
     scene.add(new THREE.AmbientLight(0xffffff, 0.6))
@@ -237,14 +276,26 @@ export default function AvatarScene() {
         startMovementIfReady()
 
         if (CLASSROOM_INSPECTION_ENABLED) {
-          disposeClassroomInspector = createClassroomInspector({
+          classroomInspector = createClassroomInspector({
             canvas,
             camera,
             scene,
             classroomRoot: gltf.scene,
             parser: gltf.parser,
             onSelection: setInspectedClassroomMesh,
+            onFocusCandidate: (bounds, roomBounds) => {
+              classroomInspectionCamera?.focusOnBounds(bounds, roomBounds)
+            },
+            onCollisionZoneSelection: setSelectedCollisionZone,
           })
+          classroomInspectorRef.current = classroomInspector
+          const inventory = classroomInspector.getInventory()
+          const collisionZones = classroomInspector.getCollisionZones()
+          setClassroomInventory(inventory)
+          setClassroomCollisionZones(collisionZones)
+          window.__ESME_CLASSROOM_INVENTORY__ = inventory
+          window.__ESME_CLASSROOM_COLLISION_ZONES__ = collisionZones
+          classroomInspector.selectInventoryItem(0)
         }
       },
       undefined,
@@ -305,7 +356,8 @@ export default function AvatarScene() {
           (animationGltf) => {
             if (disposed) return
 
-            mixer = new THREE.AnimationMixer(vrm.scene)
+            const mixer = new THREE.AnimationMixer(vrm.scene)
+            mixerRef.current = mixer
             const actionFor = (name) => {
               const sourceClip = animationGltf.animations.find(
                 animation => animation.name === name,
@@ -341,7 +393,7 @@ export default function AvatarScene() {
               ).matches,
             })
             animationControllerRef.current = animationController
-            Promise.all(LONG_IDLE_ANIMATION_IDS.map(loadVrmaAction))
+            Promise.all(LONG_IDLE_ANIMATION_IDS.map(loadVrmaPreview))
               .then((actions) => {
                 if (
                   !disposed
@@ -351,7 +403,7 @@ export default function AvatarScene() {
                 }
               })
               .catch(error => console.error('Long-idle animation load error:', error))
-            loadVrmaAction('VRMA_02')
+            loadVrmaPreview('VRMA_02')
               .then((action) => {
                 if (
                   !disposed
@@ -362,10 +414,51 @@ export default function AvatarScene() {
                 }
               })
               .catch(error => console.error('Opening greeting load error:', error))
+
+            if (ANIMATION_PREVIEW_ENABLED) {
+              previewActions.set('Idle_Loop', coreActions.idle)
+              previewActions.set('Idle_Talking_Loop', coreActions.talking)
+              previewActions.set('Walk_Formal_Loop', coreActions.walking)
+              previewActions.set('Jog_Fwd_Loop', coreActions.running)
+              previewActions.set('Walk_Loop', actionFor('Walk_Loop'))
+
+              animationPreviewRef.current = {
+                async play(id, { loopVrma = false } = {}) {
+                  try {
+                    if (id === 'Current_Pose') {
+                      animationController.returnToCoreState()
+                      setAnimationPreviewStatus('Current core state')
+                      return
+                    }
+                    setAnimationPreviewStatus(`Loading ${id}…`)
+                    const action = id.startsWith('VRMA_')
+                      ? await loadVrmaPreview(id)
+                      : previewActions.get(id)
+
+                    if (!action) {
+                      throw new Error(`${id} is not available.`)
+                    }
+                    animationController.playPreview(action, {
+                      loop: !id.startsWith('VRMA_') || loopVrma,
+                    })
+                    setAnimationPreviewStatus(`Playing ${id}`)
+                  } catch (error) {
+                    console.error('Animation preview error:', error)
+                    setAnimationPreviewStatus(`Could not play ${id}`)
+                  }
+                },
+                reset() {
+                  animationController.returnToCoreState()
+                  setAnimationPreviewStatus('Current core state')
+                },
+              }
+              setAnimationPreviewReady(true)
+              setAnimationPreviewStatus('Ready')
+            }
           },
           undefined,
           (err) => {
-            if (!disposed) console.error('Animation load error:', err)
+            if (!disposed) console.error('Walk animation load error:', err)
           },
         )
       },
@@ -387,14 +480,13 @@ export default function AvatarScene() {
 
     function animate() {
       animId = requestAnimationFrame(animate)
-      const delta   = clock.getDelta()
-      const vrm     = vrmRef.current
+      const delta = clock.getDelta()
+      const vrm = vrmRef.current
 
       const movement = movementController?.update(delta) ?? {
         moving: false,
         running: false,
       }
-
       if (vrm) {
         animationController?.setMoving(
           movement.moving,
@@ -416,12 +508,19 @@ export default function AvatarScene() {
           vrm,
           speakingFace,
           delta,
-          { enabled: animationController?.getState() !== 'contextual' },
+          {
+            enabled: ![
+              'contextual',
+              'long-idle',
+              'preview',
+            ].includes(animationController?.getState()),
+          },
         )
         updateWave(vrm, waveRef, delta)
         vrm.update(delta)
       }
 
+      classroomInspectionCamera?.update(delta)
       renderer.render(scene, camera)
     }
 
@@ -439,9 +538,15 @@ export default function AvatarScene() {
       cancelAnimationFrame(animId)
       window.removeEventListener('resize', onResize)
       window.speechSynthesis.cancel()
-      disposeClassroomInspector?.()
+      classroomInspector?.dispose()
+      classroomInspectorRef.current = null
+      delete window.__ESME_CLASSROOM_INVENTORY__
+      delete window.__ESME_CLASSROOM_COLLISION_ZONES__
+      classroomInspectionCamera?.dispose()
       movementController?.dispose()
       movementController = null
+      resetCameraRef.current = null
+      animationPreviewRef.current = null
       animationController?.dispose()
       animationController = null
       animationControllerRef.current = null
@@ -801,23 +906,190 @@ export default function AvatarScene() {
         )}
       </section>
 
+      {ANIMATION_PREVIEW_ENABLED && (
+        <aside className="animation-preview" aria-label="Animation tester">
+          <strong>Animation tester</strong>
+          <label htmlFor="animation-preview-select">Animation</label>
+          <select
+            id="animation-preview-select"
+            value={previewAnimation}
+            onChange={event => setPreviewAnimation(event.target.value)}
+            disabled={!animationPreviewReady}
+          >
+            <option value="Current_Pose">Current rest pose</option>
+            {QUATERNIUS_PREVIEW_ANIMATIONS.map(name => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+            {VRMA_PREVIEW_ANIMATIONS.map(({ id, label }) => (
+              <option key={id} value={id}>{label}</option>
+            ))}
+          </select>
+          <label className="animation-preview__loop-option">
+            <input
+              type="checkbox"
+              checked={loopVrmaPreview}
+              onChange={event => setLoopVrmaPreview(event.target.checked)}
+              disabled={!previewAnimation.startsWith('VRMA_')}
+            />
+            Repeat selected VRMA
+          </label>
+          <div className="animation-preview__actions">
+            <button
+              type="button"
+              onClick={() => animationPreviewRef.current?.play(
+                previewAnimation,
+                { loopVrma: loopVrmaPreview },
+              )}
+              disabled={!animationPreviewReady}
+            >
+              Play
+            </button>
+            <button
+              type="button"
+              onClick={() => animationPreviewRef.current?.reset()}
+              disabled={!animationPreviewReady}
+            >
+              Return to current idle
+            </button>
+          </div>
+          <p role="status">{animationPreviewStatus}</p>
+        </aside>
+      )}
+
       {CLASSROOM_INSPECTION_ENABLED && (
         <aside className="classroom-inspector" aria-live="polite">
-          <div className="classroom-inspector__heading">Classroom inspection mode</div>
-          {inspectedClassroomMesh ? (
-            <dl className="classroom-inspector__details">
-              <div><dt>Node</dt><dd>{inspectedClassroomMesh.nodeName}</dd></div>
-              <div><dt>GLTF node</dt><dd>{inspectedClassroomMesh.nodeIndex ?? 'unknown'}</dd></div>
-              <div><dt>GLTF mesh</dt><dd>{inspectedClassroomMesh.meshIndex ?? 'unknown'}</dd></div>
-              <div><dt>Primitive</dt><dd>{inspectedClassroomMesh.primitiveIndex ?? 'unknown'}</dd></div>
-              <div><dt>Center</dt><dd>{inspectedClassroomMesh.center.join(', ')}</dd></div>
-              <div><dt>Size</dt><dd>{inspectedClassroomMesh.size.join(', ')}</dd></div>
-              <div><dt>Min</dt><dd>{inspectedClassroomMesh.min.join(', ')}</dd></div>
-              <div><dt>Max</dt><dd>{inspectedClassroomMesh.max.join(', ')}</dd></div>
-            </dl>
-          ) : (
-            <p>Click a classroom object to identify its source mesh and world bounds.</p>
-          )}
+          <script id="classroom-inventory-data" type="application/json">
+            {JSON.stringify(classroomInventory)}
+          </script>
+          <script id="classroom-collision-zone-data" type="application/json">
+            {JSON.stringify(classroomCollisionZones)}
+          </script>
+          <details className="classroom-inspector__disclosure" open>
+            <summary>Classroom inspection mode</summary>
+            <div className="classroom-inspector__body">
+              <p className="classroom-inspector__controls">
+                Right-drag to look · scroll to zoom · click to inspect
+              </p>
+              {inspectedClassroomMesh ? (
+                <>
+              <div className="classroom-inspector__target-controls">
+                <button
+                  type="button"
+                  onClick={() => classroomInspectorRef.current?.selectPreviousInventoryItem()}
+                >
+                  Previous object
+                </button>
+                <span>
+                  Object {inspectedClassroomMesh.inventoryIndex} of {inspectedClassroomMesh.inventoryCount}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => classroomInspectorRef.current?.selectNextInventoryItem()}
+                >
+                  Next object
+                </button>
+              </div>
+              <section className="classroom-inspector__collision-review">
+                <div className="classroom-inspector__section-heading">
+                  <span>Desk collision zones</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const visible = !collisionZonesVisible
+                      setCollisionZonesVisible(visible)
+                      classroomInspectorRef.current?.setCollisionZonesVisible(visible)
+                    }}
+                  >
+                    {collisionZonesVisible ? 'Hide zones' : 'Show zones'}
+                  </button>
+                </div>
+                {selectedCollisionZone ? (
+                  <>
+                    <div className="classroom-inspector__target-controls">
+                      <button
+                        type="button"
+                        onClick={() => classroomInspectorRef.current?.selectPreviousCollisionZone()}
+                      >
+                        Previous zone
+                      </button>
+                      <span>
+                        Zone {selectedCollisionZone.collisionZoneIndex} of{' '}
+                        {selectedCollisionZone.collisionZoneCount}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => classroomInspectorRef.current?.selectNextCollisionZone()}
+                      >
+                        Next zone
+                      </button>
+                    </div>
+                    <dl className="classroom-inspector__details classroom-inspector__details--compact">
+                      <div><dt>Source</dt><dd>GLTF nodes {selectedCollisionZone.sourceNodeIndices.join(' and ')}</dd></div>
+                      <div><dt>Center</dt><dd>{selectedCollisionZone.center.join(', ')}</dd></div>
+                      <div><dt>Size</dt><dd>{selectedCollisionZone.size.join(', ')}</dd></div>
+                    </dl>
+                  </>
+                ) : (
+                  <p>
+                    Collision zones could not be derived. The merged classroom
+                    geometry may have changed.
+                  </p>
+                )}
+              </section>
+              {inspectedClassroomMesh.candidateCount > 1 && (
+              <div className="classroom-inspector__target-controls">
+                <button type="button" onClick={() => classroomInspectorRef.current?.selectPrevious()}>
+                  Previous target
+                </button>
+                <span>
+                  Target {inspectedClassroomMesh.candidateIndex} of {inspectedClassroomMesh.candidateCount}
+                </span>
+                <button type="button" onClick={() => classroomInspectorRef.current?.selectNext()}>
+                  Next target
+                </button>
+              </div>
+              )}
+              <dl className="classroom-inspector__details">
+                <div><dt>Suggested</dt><dd>{inspectedClassroomMesh.suggestedLabel}</dd></div>
+                <div><dt>Node</dt><dd>{inspectedClassroomMesh.nodeName}</dd></div>
+                <div><dt>GLTF node</dt><dd>{inspectedClassroomMesh.nodeIndex ?? 'unknown'}</dd></div>
+                <div><dt>GLTF mesh</dt><dd>{inspectedClassroomMesh.meshIndex ?? 'unknown'}</dd></div>
+                <div><dt>Primitive</dt><dd>{inspectedClassroomMesh.primitiveIndex ?? 'unknown'}</dd></div>
+                <div><dt>Parent</dt><dd>{inspectedClassroomMesh.parentName}</dd></div>
+                <div><dt>Material</dt><dd>{inspectedClassroomMesh.materialNames.join(', ')}</dd></div>
+                <div>
+                  <dt>Surface</dt>
+                  <dd>
+                    {inspectedClassroomMesh.isFallbackTarget
+                      ? 'combined fallback mesh'
+                      : inspectedClassroomMesh.isRoomSurface
+                        ? 'large room surface'
+                        : 'object'}
+                  </dd>
+                </div>
+                <div><dt>Center</dt><dd>{inspectedClassroomMesh.center.join(', ')}</dd></div>
+                <div><dt>Size</dt><dd>{inspectedClassroomMesh.size.join(', ')}</dd></div>
+                <div><dt>Min</dt><dd>{inspectedClassroomMesh.min.join(', ')}</dd></div>
+                <div><dt>Max</dt><dd>{inspectedClassroomMesh.max.join(', ')}</dd></div>
+              </dl>
+                </>
+              ) : (
+                <p>Click a classroom object to identify its source mesh and world bounds.</p>
+              )}
+            </div>
+          </details>
+        </aside>
+      )}
+
+      {COLLISION_DEBUG_ENABLED && (
+        <aside className="movement-debug" aria-live="polite">
+          <strong>Movement collision test</strong>
+          <span>
+            Use WASD or the arrow keys to move Esme. Hold Shift to run.
+          </span>
+          <span>
+            Pink: desks · Orange: fixed objects · Yellow: window boundary · Blue: room boundary
+          </span>
         </aside>
       )}
 
@@ -855,7 +1127,12 @@ export default function AvatarScene() {
         alignItems: 'center',
         fontFamily: 'sans-serif',
       }}>
-        <button className="button button--secondary" onClick={() => triggerRef.current?.()} style={btnStyle('#475569')}>
+
+        <button
+          className="button button--secondary"
+          onClick={() => triggerRef.current?.()}
+          style={btnStyle('#475569')}
+        >
           Wave Hi 👋
         </button>
 
@@ -889,6 +1166,23 @@ export default function AvatarScene() {
           style={btnStyle('#475569')}
         >
           {transcriptOpen ? 'Hide transcript' : 'Show transcript'}
+        </button>
+
+        <button
+          className="button button--secondary"
+          disabled={!movementReady}
+          title="Move with WASD or arrow keys. Hold Shift to run."
+          onClick={(event) => {
+            resetCameraRef.current?.()
+            event.currentTarget.blur()
+          }}
+          style={{
+            ...btnStyle('#475569'),
+            opacity: movementReady ? 1 : 0.45,
+            cursor: movementReady ? 'pointer' : 'not-allowed',
+          }}
+        >
+          Reset camera
         </button>
 
         <input
