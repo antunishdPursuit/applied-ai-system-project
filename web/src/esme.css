@@ -71,6 +71,7 @@ a:focus-visible {
 .transcript,
 .esme-response,
 .control-dock,
+.animation-preview,
 .classroom-inspector {
   color: var(--esme-text);
   font-family: inherit !important;
@@ -85,6 +86,7 @@ a:focus-visible {
 .esme-response,
 .transcript,
 .control-dock,
+.animation-preview,
 .classroom-inspector {
   background: var(--esme-surface) !important;
   border: 1px solid var(--esme-border) !important;
@@ -171,6 +173,74 @@ a:focus-visible {
   justify-content: center;
 }
 
+.animation-preview {
+  position: absolute;
+  bottom: 96px;
+  left: 16px;
+  z-index: 22;
+  display: grid;
+  width: min(300px, calc(100vw - 32px));
+  gap: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  pointer-events: auto;
+}
+
+.animation-preview label,
+.animation-preview p {
+  margin: 0;
+  color: var(--esme-muted);
+  font-size: 0.78rem;
+}
+
+.animation-preview select,
+.animation-preview button {
+  min-height: 36px;
+  border: 1px solid var(--esme-border);
+  border-radius: 9px;
+  color: var(--esme-text);
+  background: var(--esme-surface-strong);
+  font: inherit;
+}
+
+.animation-preview select {
+  width: 100%;
+  padding: 6px 8px;
+}
+
+.animation-preview__loop-option {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.animation-preview__loop-option input {
+  accent-color: var(--esme-pink);
+}
+
+.animation-preview__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.animation-preview button {
+  flex: 1;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.animation-preview button:disabled,
+.animation-preview select:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.animation-preview button:focus-visible,
+.animation-preview select:focus-visible {
+  outline: 2px solid var(--esme-pink);
+  outline-offset: 2px;
+}
+
 .classroom-inspector {
   position: absolute;
   top: 16px;
@@ -181,13 +251,84 @@ a:focus-visible {
   transform: translateX(-50%);
   border-radius: 14px;
   font-size: 0.78rem;
-  pointer-events: none;
+  max-height: calc(100vh - 120px);
+  overflow: auto;
+  pointer-events: auto;
 }
 
-.classroom-inspector__heading {
-  margin-bottom: 8px;
+.classroom-inspector__disclosure > summary {
   color: var(--esme-pink);
   font-weight: 750;
+  cursor: pointer;
+}
+
+.classroom-inspector__disclosure > summary:focus-visible {
+  outline: 2px solid var(--esme-pink);
+  outline-offset: 4px;
+}
+
+.classroom-inspector__body {
+  margin-top: 8px;
+}
+
+.classroom-inspector__controls {
+  margin-bottom: 8px !important;
+}
+
+.classroom-inspector__target-controls {
+  display: grid;
+  grid-template-columns: auto minmax(88px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.classroom-inspector__target-controls span {
+  color: var(--esme-muted);
+  text-align: center;
+}
+
+.classroom-inspector__target-controls button {
+  padding: 5px 8px;
+  color: var(--esme-text);
+  background: var(--esme-surface-soft);
+  border: 1px solid var(--esme-border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.classroom-inspector__target-controls button:hover {
+  border-color: var(--esme-pink);
+}
+
+.classroom-inspector__collision-review {
+  margin: 10px 0;
+  padding: 10px 0;
+  border-top: 1px solid var(--esme-border);
+  border-bottom: 1px solid var(--esme-border);
+}
+
+.classroom-inspector__section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: var(--esme-pink);
+  font-weight: 700;
+}
+
+.classroom-inspector__section-heading button {
+  padding: 4px 8px;
+  color: var(--esme-text);
+  background: var(--esme-surface-soft);
+  border: 1px solid var(--esme-border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.classroom-inspector__section-heading button:hover {
+  border-color: var(--esme-pink);
 }
 
 .classroom-inspector p {
@@ -215,6 +356,38 @@ a:focus-visible {
   min-width: 0;
   margin: 0;
   overflow-wrap: anywhere;
+}
+
+.classroom-inspector__details--compact {
+  margin-bottom: 2px;
+}
+
+.movement-debug {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  z-index: 20;
+  display: grid;
+  gap: 4px;
+  width: min(440px, calc(100vw - 520px));
+  padding: 10px 14px;
+  color: var(--esme-text);
+  font-size: 0.78rem;
+  text-align: center;
+  background: var(--esme-surface);
+  border: 1px solid var(--esme-border);
+  border-radius: 14px;
+  box-shadow: var(--esme-shadow);
+  transform: translateX(-50%);
+  backdrop-filter: blur(14px);
+}
+
+.movement-debug strong {
+  color: var(--esme-pink);
+}
+
+.movement-debug span {
+  color: var(--esme-muted);
 }
 
 .button {
@@ -295,6 +468,17 @@ a:focus-visible {
   }
 
   .classroom-inspector {
+    top: 96px;
+    width: min(420px, calc(100vw - 20px));
+  }
+
+  .animation-preview {
+    bottom: 112px;
+    left: 10px;
+    width: min(300px, calc(100vw - 20px));
+  }
+
+  .movement-debug {
     top: 96px;
     width: min(420px, calc(100vw - 20px));
   }

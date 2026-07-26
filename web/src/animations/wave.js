@@ -58,11 +58,8 @@ export function updateWave(vrm, stateRef, delta) {
   const hips  = bone(vrm, 'hips')
 
   if (wave.phase === null) {
-    if (lUA)  lUA.rotation.z  = REST.leftUpperArm.z
-    if (rUA)  rUA.rotation.z  = REST.rightUpperArm.z
-    if (lLA)  lLA.rotation.z  = REST.leftLowerArm.z
-    if (rUL)  rUL.rotation.z  = REST.rightUpperLeg.z
-    if (hips) hips.rotation.z = REST.hips.z
+    // The active locomotion clip owns these joints while Esme walks.
+    // Rest values are applied once on load and at the end of a wave.
     return
   }
 
