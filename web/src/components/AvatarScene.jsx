@@ -11,10 +11,13 @@ import {
 import { updateIdle, createBlinkState, updateBlink } from '../animations/idle.js'
 import { createWaveState, triggerWave, applyRestPose, updateWave } from '../animations/wave.js'
 import { createLipSyncState, startSpeaking, stopSpeaking, updateLipSync } from '../animations/lipsync.js'
+import { createClassroomInspector } from '../classroom/classroomInspector.js'
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8001').replace(/\/$/, '')
 const MAX_CHAT_MESSAGES = 20
 const WELCOME_PROMPT = 'Hi, I\u2019m Esme. What kind of songs do you like? You can name a genre, artist, mood, or activity.'
+const CLASSROOM_INSPECTION_ENABLED = import.meta.env.DEV
+  && new URLSearchParams(window.location.search).get('inspectClassroom') === '1'
 
 export default function AvatarScene() {
   const canvasRef  = useRef(null)
@@ -38,6 +41,7 @@ export default function AvatarScene() {
   const [useElevenLabs,      setUseElevenLabs]      = useState(false)
   const [elevenLabsAvailable, setElevenLabsAvailable] = useState(false)
   const [transcriptOpen,     setTranscriptOpen]     = useState(false)
+  const [inspectedClassroomMesh, setInspectedClassroomMesh] = useState(null)
   const messagesRef      = useRef([])
   const voiceEnabledRef  = useRef(true)
   const useElevenlabsRef = useRef(true)
@@ -77,6 +81,7 @@ export default function AvatarScene() {
 
   useEffect(() => {
     const canvas = canvasRef.current
+    let disposeClassroomInspector = null
 
     // Renderer
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true })
@@ -116,7 +121,19 @@ export default function AvatarScene() {
     // Classroom environment
     loader.load(
       '/Classroom/scene.gltf',
-      (gltf) => { scene.add(gltf.scene) },
+      (gltf) => {
+        scene.add(gltf.scene)
+        if (CLASSROOM_INSPECTION_ENABLED) {
+          disposeClassroomInspector = createClassroomInspector({
+            canvas,
+            camera,
+            scene,
+            classroomRoot: gltf.scene,
+            parser: gltf.parser,
+            onSelection: setInspectedClassroomMesh,
+          })
+        }
+      },
       undefined,
       (err) => console.error('Classroom load error:', err),
     )
@@ -228,6 +245,7 @@ export default function AvatarScene() {
       cancelAnimationFrame(animId)
       window.removeEventListener('resize', onResize)
       window.speechSynthesis.cancel()
+      disposeClassroomInspector?.()
       renderer.dispose()
     }
   }, [])
@@ -579,6 +597,26 @@ export default function AvatarScene() {
           </div>
         )}
       </section>
+
+      {CLASSROOM_INSPECTION_ENABLED && (
+        <aside className="classroom-inspector" aria-live="polite">
+          <div className="classroom-inspector__heading">Classroom inspection mode</div>
+          {inspectedClassroomMesh ? (
+            <dl className="classroom-inspector__details">
+              <div><dt>Node</dt><dd>{inspectedClassroomMesh.nodeName}</dd></div>
+              <div><dt>GLTF node</dt><dd>{inspectedClassroomMesh.nodeIndex ?? 'unknown'}</dd></div>
+              <div><dt>GLTF mesh</dt><dd>{inspectedClassroomMesh.meshIndex ?? 'unknown'}</dd></div>
+              <div><dt>Primitive</dt><dd>{inspectedClassroomMesh.primitiveIndex ?? 'unknown'}</dd></div>
+              <div><dt>Center</dt><dd>{inspectedClassroomMesh.center.join(', ')}</dd></div>
+              <div><dt>Size</dt><dd>{inspectedClassroomMesh.size.join(', ')}</dd></div>
+              <div><dt>Min</dt><dd>{inspectedClassroomMesh.min.join(', ')}</dd></div>
+              <div><dt>Max</dt><dd>{inspectedClassroomMesh.max.join(', ')}</dd></div>
+            </dl>
+          ) : (
+            <p>Click a classroom object to identify its source mesh and world bounds.</p>
+          )}
+        </aside>
+      )}
 
       {/* Controls */}
       {chatLimitReached && (
